@@ -229,7 +229,7 @@ _io = [
 
 class Platform(XilinxPlatform):
     def __init__(self):
-        XilinxPlatform.__init__(self, "xc7a35t-fgg484-2", _io, toolchain="vivado")
+        XilinxPlatform.__init__(self, "xc7a100t-fgg484-2", _io, toolchain="vivado")
         self.toolchain.bitstream_commands = [
             "set_property CONFIG_VOLTAGE 3.3 [current_design]",
             "set_property CFGBVS VCCO [current_design]",
