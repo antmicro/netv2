@@ -336,8 +336,8 @@ class NeTV2SoC(SoCSDRAM):
         with_sdram=True,
         with_ethernet=False,
         with_etherbone=True,
-        with_sdcard=True,
-        with_pcie=False,
+        with_sdcard=False,
+        with_pcie=True,
         with_hdmi_in0=False, with_hdmi_out0=False,
         with_hdmi_in1=False, with_hdmi_out1=False,
         with_interboard_communication=False):
