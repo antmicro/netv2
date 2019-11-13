@@ -398,10 +398,10 @@ class NeTV2SoC(SoCSDRAM):
         if with_etherbone:
             self.submodules.ethphy = LiteEthPHYRMII(self.platform.request("eth_clocks"), self.platform.request("eth"))
             self.submodules.ethcore = LiteEthUDPIPCore(self.ethphy, 0x10e2d5000000, convert_ip("192.168.1.50"), sys_clk_freq)
-            self.add_cpu(LiteEthEtherbone(self.ethcore.udp, 1234, mode="master"))
-            self.add_wb_master(self.cpu.wishbone.bus)
-            #self.submodules.etherbone = LiteEthEtherbone(self.ethcore.udp, 1234, mode="master")
-            #self.add_wb_master(self.etherbone.wishbone.bus)
+            #self.add_cpu(LiteEthEtherbone(self.ethcore.udp, 1234, mode="master"))
+            #self.add_wb_master(self.cpu.wishbone.bus)
+            self.submodules.etherbone = LiteEthEtherbone(self.ethcore.udp, 1234, mode="master")
+            self.add_wb_master(self.etherbone.wishbone.bus)
 
             self.crg.cd_eth.clk.attr.add("keep")
             self.platform.add_false_path_constraints(
@@ -443,7 +443,7 @@ class NeTV2SoC(SoCSDRAM):
                 self.pcie_phy.cd_pcie.clk)
 
             # pcie endpoint
-            self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, with_reordering=True)
+            self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy)
 
             # pcie wishbone bridge
             self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1, shadow_base=0x80000000)
@@ -593,8 +593,7 @@ class NeTV2SoC(SoCSDRAM):
     def generate_software_header(self):
         csr_header = get_csr_header(self.csr_regions,
                                     self.constants,
-                                    with_access_functions=False,
-                                    with_shadow_base=False)
+                                    with_access_functions=False)
         tools.write_to_file(os.path.join("software", "pcie", "kernel", "csr.h"), csr_header)
 
 
