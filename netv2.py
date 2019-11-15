@@ -397,7 +397,7 @@ class NeTV2SoC(SoCSDRAM):
         # etherbone
         if with_etherbone:
             self.submodules.ethphy = LiteEthPHYRMII(self.platform.request("eth_clocks"), self.platform.request("eth"))
-            self.submodules.ethcore = LiteEthUDPIPCore(self.ethphy, 0x10e2d5000000, convert_ip("192.168.1.50"), sys_clk_freq)
+            self.submodules.ethcore = LiteEthUDPIPCore(self.ethphy, 0x10e2d5000000, convert_ip("10.0.0.50"), sys_clk_freq)
             #self.add_cpu(LiteEthEtherbone(self.ethcore.udp, 1234, mode="master"))
             #self.add_wb_master(self.cpu.wishbone.bus)
             self.submodules.etherbone = LiteEthEtherbone(self.ethcore.udp, 1234, mode="master")
