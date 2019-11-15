@@ -187,13 +187,13 @@ static int netv2_dma_init(struct netv2_device *s)
         /* for each dma buffer */
         for(j = 0; j < DMA_BUFFER_COUNT; j++) {
             /* allocate rd */
-            dmachan->reader_addr[j] = dma_zalloc_coherent(
+            dmachan->reader_addr[j] = dma_alloc_coherent(
                 &s->dev->dev,
                 DMA_BUFFER_SIZE,
                 &dmachan->reader_handle[j],
                 GFP_KERNEL | GFP_DMA32);
             /* allocate wr */
-            dmachan->writer_addr[j] = dma_zalloc_coherent(
+            dmachan->writer_addr[j] = dma_alloc_coherent(
                 &s->dev->dev,
                 DMA_BUFFER_SIZE,
                 &dmachan->writer_handle[j],
