@@ -446,7 +446,7 @@ class NeTV2SoC(SoCSDRAM):
             self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy)
 
             # pcie wishbone bridge
-            self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1, shadow_base=0x80000000)
+            self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1)
             self.add_wb_master(self.pcie_bridge.wishbone)
 
             # pcie dma
