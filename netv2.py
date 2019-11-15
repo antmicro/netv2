@@ -15,7 +15,7 @@ from litex.soc.interconnect.csr import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.soc_sdram import *
 from litex.soc.integration.builder import *
-from litex.soc.integration.export import get_csr_header
+from litex.soc.integration.export import get_csr_header, get_soc_header
 from litex.soc.cores.clock import *
 from litex.soc.cores import dna, xadc, timer, uart
 from litex.soc.cores.freqmeter import FreqMeter
@@ -595,6 +595,9 @@ class NeTV2SoC(SoCSDRAM):
                                     self.constants,
                                     with_access_functions=False)
         tools.write_to_file(os.path.join("software", "pcie", "kernel", "csr.h"), csr_header)
+
+        soc_header = get_soc_header(self.constants, with_access_functions=False)
+        tools.write_to_file(os.path.join("software", "pcie", "kernel", "soc.h"), soc_header)
 
 
 class NeTV2MVPSoC(NeTV2SoC):

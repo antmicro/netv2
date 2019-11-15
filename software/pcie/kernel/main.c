@@ -43,6 +43,7 @@
 
 #include "netv2.h"
 #include "csr.h"
+#include "soc.h"
 #include "config.h"
 #include "flags.h"
 
