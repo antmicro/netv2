@@ -324,10 +324,8 @@ class NeTV2SoC(SoCSDRAM):
     }
     interrupt_map.update(SoCSDRAM.interrupt_map)
 
-    SoCSDRAM.mem_map["csr"] = 0x00000000
-
     def __init__(self, platform,
-        with_sdram=False,
+        with_sdram=True,
         with_ethernet=False,
         with_etherbone=True,
         with_sdcard=False,
@@ -339,11 +337,10 @@ class NeTV2SoC(SoCSDRAM):
         sys_clk_freq = int(100e6)
         sd_freq = int(100e6)
         SoCSDRAM.__init__(self, platform, sys_clk_freq,
-            #cpu_type="vexriscv", l2_size=32,
-            cpu_type=None, l2_size=32,
-            #csr_data_width=8, csr_address_width=14,
-            csr_data_width=32, csr_address_width=14,
+            cpu_type="vexriscv", l2_size=32,
+            csr_data_width=32, csr_address_width=15,
             integrated_sram_size=0x4000,
+            integrated_rom_size=0x8000,
             integrated_main_ram_size=0x8000 if not with_sdram else 0,
             ident="NeTV2 LiteX Test SoC", ident_version=True,
             reserve_nmi_interrupt=False)
