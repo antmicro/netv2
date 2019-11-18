@@ -324,13 +324,7 @@ class NeTV2SoC(SoCSDRAM):
     }
     interrupt_map.update(SoCSDRAM.interrupt_map)
 
-    mem_map = {
-        "ethmac": 0x30000000,
-    }
-    mem_map.update(SoCSDRAM.mem_map)
-
-    #mem_map["csr"] = 0x00000000
-    #mem_map["rom"] = 0x20000000
+    SoCSDRAM.mem_map["csr"] = 0x00000000
 
     def __init__(self, platform,
         with_sdram=False,
@@ -349,7 +343,6 @@ class NeTV2SoC(SoCSDRAM):
             cpu_type=None, l2_size=32,
             #csr_data_width=8, csr_address_width=14,
             csr_data_width=32, csr_address_width=14,
-            integrated_rom_size=0x8000,
             integrated_sram_size=0x4000,
             integrated_main_ram_size=0x8000 if not with_sdram else 0,
             ident="NeTV2 LiteX Test SoC", ident_version=True,
