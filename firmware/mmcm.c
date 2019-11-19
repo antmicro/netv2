@@ -3,6 +3,8 @@
 
 #include "mmcm.h"
 
+#define MMCM_TIMEOUT 1000000
+
 /*
  * Despite varying pixel clocks, we must keep the PLL VCO operating
  * in the specified range of 600MHz - 1200MHz.
@@ -25,31 +27,53 @@ int hdmi_out0_mmcm_read(int adr) {
 
 #ifdef CSR_HDMI_IN0_BASE
 void hdmi_in0_clocking_mmcm_write(int adr, int data) {
+  int timeout = 0;
 	hdmi_in0_clocking_mmcm_adr_write(adr);
 	hdmi_in0_clocking_mmcm_dat_w_write(data);
 	hdmi_in0_clocking_mmcm_write_write(1);
-	while(!hdmi_in0_clocking_mmcm_drdy_read());
+	while(!hdmi_in0_clocking_mmcm_drdy_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in0_clocking_mmcm_write failed with adr %x, data %x\n", adr, data);
+	}
 }
 
 int hdmi_in0_clocking_mmcm_read(int adr) {
+  int timeout = 0;
 	hdmi_in0_clocking_mmcm_adr_write(adr);
 	hdmi_in0_clocking_mmcm_read_write(1);
-	while(!hdmi_in0_clocking_mmcm_drdy_read());
+	while(!hdmi_in0_clocking_mmcm_drdy_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in0_clocking_mmcm_read failed with adr %x\n", adr);
+	}
+
 	return hdmi_in0_clocking_mmcm_dat_r_read();
 }
 
 #ifdef CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_O_ADDR
 void hdmi_in0_clocking_mmcm_write_o(int adr, int data) {
+  int timeout = 0;
 	hdmi_in0_clocking_mmcm_adr_write(adr);
 	hdmi_in0_clocking_mmcm_dat_w_write(data);
 	hdmi_in0_clocking_mmcm_write_o_write(1);
-	while(!hdmi_in0_clocking_mmcm_drdy_o_read());
+	while(!hdmi_in0_clocking_mmcm_drdy_o_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in0_clocking_mmcm_write_o failed with adr %x, data %x\n", adr, data);
+	}
 }
 
 int hdmi_in0_clocking_mmcm_read_o(int adr) {
+  int timeout = 0;
 	hdmi_in0_clocking_mmcm_adr_write(adr);
 	hdmi_in0_clocking_mmcm_read_o_write(1);
-	while(!hdmi_in0_clocking_mmcm_drdy_o_read());
+	while(!hdmi_in0_clocking_mmcm_drdy_o_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in0_clocking_mmcm_read_o failed with adr %x\n", adr);
+	}
+
 	return hdmi_in0_clocking_mmcm_dat_o_r_read();
 }
 #endif
@@ -83,31 +107,34 @@ static void hdmi_in_0_config_60_120mhz(void) {
 	hdmi_in0_clocking_mmcm_write(0x4F, (0x2 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
 
 #ifdef CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_O_ADDR
-	hdmi_in0_clocking_mmcm_write_o(0x14, 0x1000 |  (2<<6) | 3);  /* clkfbout_mult  = 5 (2/3) */
-	hdmi_in0_clocking_mmcm_write_o(0x15, 1 << 7);                /* clkfbout_mult  = 5 (edge = 1) */
-	hdmi_in0_clocking_mmcm_write_o(0x08, 0x1000 |  (2<<6) | 3);  /* clkout0_divide = 5 (2/3) */
-	hdmi_in0_clocking_mmcm_write_o(0x09, 1 << 7);                /* clkout0_divide = 5 (edge = 1) */
-	hdmi_in0_clocking_mmcm_write_o(0x0a, 0x1000 |  (2<<6) | 2);  /* clkout1_divide = 4 */
-	hdmi_in0_clocking_mmcm_write_o(0x0c, 0x1000 |  (0<<6) | 0);  /* clkout2_divide = 1 */
-	hdmi_in0_clocking_mmcm_write_o(0x0d, (1<<6));                /* clkout2_divide = 1 */
+	hdmi_in0_clocking_mmcm_write_o(0x14, 0x1000 |  (5<<6) | 5);  /* clkfbout_mult  = 10 */
+	hdmi_in0_clocking_mmcm_write_o(0x15, 0);                     /* clkfbout_mult  = 10 (edge = 0) */
+	hdmi_in0_clocking_mmcm_write_o(0x08, 0x1000 |  (5<<6) | 5);  /* clkout0_divide = 10 */
+	hdmi_in0_clocking_mmcm_write_o(0x09, 0)     ;                /* clkout0_divide = 10 (edge = 0) */
+	// clkout1 is not used
+	hdmi_in0_clocking_mmcm_write_o(0x0c, 0x1000 |  (1<<6) | 1);  /* clkout2_divide = 2 */
+	hdmi_in0_clocking_mmcm_write_o(0x0d, 0);                     /* clkout2_divide = 2 */
 
 	// lock/filter parameters derived from these VCO settings for 1080p, low bandwidth:
 	/*      p_BANDWIDTH="LOW", i_RST=self._mmcm_reset.storage, o_LOCKED=mmcm_locked_o,
 
-                # VCO
-                p_REF_JITTER1=0.01, p_CLKIN1_PERIOD=6.734,
-                p_CLKFBOUT_MULT_F=5.0, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1,
-                i_CLKIN1=mmcm_clk0,  # uncompesated delay for best phase match between master/slave
-                i_CLKFBIN=mmcm_fb_o, o_CLKFBOUT=mmcm_fb_o,  */
-	hdmi_in0_clocking_mmcm_write(0x18, 0x3e8); // lock register 1
-	hdmi_in0_clocking_mmcm_write(0x19, (0x0 << 15) | (0xe << 10) | 0x3801); // lock register 2
-	hdmi_in0_clocking_mmcm_write(0x1A, (0x1 << 15) | (0xe << 10) | 0x3be9); // lock register 3
-	hdmi_in0_clocking_mmcm_write(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
-	hdmi_in0_clocking_mmcm_write(0x4F, (0x3 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
+           # VCO
+           p_REF_JITTER1=0.01, p_CLKIN1_PERIOD=6.734,
+           p_CLKFBOUT_MULT=10, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1, # PLL range is 800-1866 MHz, unlike MMCM which is 600-1440 MHz
+           i_CLKIN1=mmcm_clk0,  # uncompensated delay for best phase match between master/slave
+           i_CLKFBIN=mmcm_fb2_o, o_CLKFBOUT=mmcm_fb2_o, */
+	hdmi_in0_clocking_mmcm_write_o(0x18, 0x3e8); // lock register 1
+	hdmi_in0_clocking_mmcm_write_o(0x19, (0x0 << 15) | (0x1c << 10) | 0x3001); // lock register 2
+	hdmi_in0_clocking_mmcm_write_o(0x1A, (0x1 << 15) | (0x1c << 10) | 0x33e9); // lock register 3
+	// FiltReg1:   table[9]:0x0 (r):0x0 table[8:7]:0x1 (r):0x0 table[6]:0x0 (r):0x8
+	hdmi_in0_clocking_mmcm_write_o(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
+	// FiltReg2:   table[5]:0x0 (r):0x0 table[4:3]:0x0 (r):0x0 table[2:1]:0x2 (r):0x0 table[0]:0x0 (r):0x8
+	hdmi_in0_clocking_mmcm_write_o(0x4F, (0x0 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
 #endif
 }
 
 static void hdmi_in_0_config_120_240mhz(void) {
+#if 1	
 	hdmi_in0_clocking_mmcm_write(0x14, 0x1000 |  (2<<6) | 3);  /* clkfbout_mult  = 5 (2/3) */
 	hdmi_in0_clocking_mmcm_write(0x15, 1 << 7);                /* clkfbout_mult  = 5 (edge = 1) */
 	hdmi_in0_clocking_mmcm_write(0x08, 0x1000 |  (2<<6) | 3);  /* clkout0_divide = 5 (2/3) */
@@ -121,7 +148,7 @@ static void hdmi_in_0_config_120_240mhz(void) {
 
 	                  # VCO
 	  p_REF_JITTER1=0.01, p_CLKIN1_PERIOD=6.734,
-	  p_CLKFBOUT_MULT_F=5.0, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1,
+	  p_CLKFBOUT_MULT_F=10.0, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1,
 	  i_CLKIN1=clk_input_bufr, i_CLKFBIN=mmcm_fb_o, o_CLKFBOUT=mmcm_fb, */
 	hdmi_in0_clocking_mmcm_write(0x18, 0x3e8); // lock register 1
 	hdmi_in0_clocking_mmcm_write(0x19, (0x0 << 15) | (0xe << 10) | 0x3801); // lock register 2
@@ -129,60 +156,85 @@ static void hdmi_in_0_config_120_240mhz(void) {
 	hdmi_in0_clocking_mmcm_write(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
 	hdmi_in0_clocking_mmcm_write(0x4F, (0x3 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
 
-#ifdef CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_O_ADDR
-	hdmi_in0_clocking_mmcm_write_o(0x14, 0x1000 |  (2<<6) | 3);  /* clkfbout_mult  = 5 (2/3) */
-	hdmi_in0_clocking_mmcm_write_o(0x15, 1 << 7);                /* clkfbout_mult  = 5 (edge = 1) */
-	hdmi_in0_clocking_mmcm_write_o(0x08, 0x1000 |  (2<<6) | 3);  /* clkout0_divide = 5 (2/3) */
-	hdmi_in0_clocking_mmcm_write_o(0x09, 1 << 7);                /* clkout0_divide = 5 (edge = 1) */
-	hdmi_in0_clocking_mmcm_write_o(0x0a, 0x1000 |  (2<<6) | 2);  /* clkout1_divide = 4 */
-	hdmi_in0_clocking_mmcm_write_o(0x0c, 0x1000 |  (0<<6) | 0);  /* clkout2_divide = 1 */
-	hdmi_in0_clocking_mmcm_write_o(0x0d, (1<<6));                /* clkout2_divide = 1 */
+#ifdef CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_O_ADDR   // configure at x10 even at high frequency
+	hdmi_in0_clocking_mmcm_write_o(0x14, 0x1000 |  (5<<6) | 5);  /* clkfbout_mult  = 10 */
+	hdmi_in0_clocking_mmcm_write_o(0x15, 0);                     /* clkfbout_mult  = 10 (edge = 0) */
+	hdmi_in0_clocking_mmcm_write_o(0x08, 0x1000 |  (5<<6) | 5);  /* clkout0_divide = 10 */
+	hdmi_in0_clocking_mmcm_write_o(0x09, 0)     ;                /* clkout0_divide = 10 (edge = 0) */
+	// clkout1 is not used
+	hdmi_in0_clocking_mmcm_write_o(0x0c, 0x1000 |  (1<<6) | 1);  /* clkout2_divide = 2 */
+	hdmi_in0_clocking_mmcm_write_o(0x0d, 0);                     /* clkout2_divide = 2 */
 
 	// lock/filter parameters derived from these VCO settings for 1080p, low bandwidth:
 	/*      p_BANDWIDTH="LOW", i_RST=self._mmcm_reset.storage, o_LOCKED=mmcm_locked_o,
 
-                # VCO
-                p_REF_JITTER1=0.01, p_CLKIN1_PERIOD=6.734,
-                p_CLKFBOUT_MULT_F=5.0, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1,
-                i_CLKIN1=mmcm_clk0,  # uncompesated delay for best phase match between master/slave
-                i_CLKFBIN=mmcm_fb_o, o_CLKFBOUT=mmcm_fb_o,  */
-	hdmi_in0_clocking_mmcm_write(0x18, 0x3e8); // lock register 1
-	hdmi_in0_clocking_mmcm_write(0x19, (0x0 << 15) | (0xe << 10) | 0x3801); // lock register 2
-	hdmi_in0_clocking_mmcm_write(0x1A, (0x1 << 15) | (0xe << 10) | 0x3be9); // lock register 3
-	hdmi_in0_clocking_mmcm_write(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
-	hdmi_in0_clocking_mmcm_write(0x4F, (0x3 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
+           # VCO
+           p_REF_JITTER1=0.01, p_CLKIN1_PERIOD=6.734,
+           p_CLKFBOUT_MULT=10, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1, # PLL range is 800-1866 MHz, unlike MMCM which is 600-1440 MHz
+           i_CLKIN1=mmcm_clk0,  # uncompensated delay for best phase match between master/slave
+           i_CLKFBIN=mmcm_fb2_o, o_CLKFBOUT=mmcm_fb2_o, */
+	hdmi_in0_clocking_mmcm_write_o(0x18, 0x3e8); // lock register 1
+	hdmi_in0_clocking_mmcm_write_o(0x19, (0x0 << 15) | (0x1c << 10) | 0x3001); // lock register 2
+	hdmi_in0_clocking_mmcm_write_o(0x1A, (0x1 << 15) | (0x1c << 10) | 0x33e9); // lock register 3
+	// FiltReg1:   table[9]:0x0 (r):0x0 table[8:7]:0x1 (r):0x0 table[6]:0x0 (r):0x8
+	hdmi_in0_clocking_mmcm_write_o(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
+	// FiltReg2:   table[5]:0x0 (r):0x0 table[4:3]:0x0 (r):0x0 table[2:1]:0x2 (r):0x0 table[0]:0x0 (r):0x8
+	hdmi_in0_clocking_mmcm_write_o(0x4F, (0x0 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
+#endif
 #endif
 }
 #endif
-
 
 #ifdef CSR_HDMI_IN1_BASE
 void hdmi_in1_clocking_mmcm_write(int adr, int data) {
+  int timeout = 0;
 	hdmi_in1_clocking_mmcm_adr_write(adr);
 	hdmi_in1_clocking_mmcm_dat_w_write(data);
 	hdmi_in1_clocking_mmcm_write_write(1);
-	while(!hdmi_in1_clocking_mmcm_drdy_read());
+	while(!hdmi_in1_clocking_mmcm_drdy_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in1_clocking_mmcm_write failed with adr %x, data %x\n", adr, data);
+	}
 }
 
 int hdmi_in1_clocking_mmcm_read(int adr) {
+  int timeout = 0;
 	hdmi_in1_clocking_mmcm_adr_write(adr);
 	hdmi_in1_clocking_mmcm_read_write(1);
-	while(!hdmi_in1_clocking_mmcm_drdy_read());
+	while(!hdmi_in1_clocking_mmcm_drdy_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in1_clocking_mmcm_read failed with adr %x\n", adr);
+	}
+	  
 	return hdmi_in1_clocking_mmcm_dat_r_read();
 }
 
 #ifdef CSR_HDMI_IN1_CLOCKING_MMCM_DRDY_O_ADDR
 void hdmi_in1_clocking_mmcm_write_o(int adr, int data) {
+  int timeout = 0;
 	hdmi_in1_clocking_mmcm_adr_write(adr);
 	hdmi_in1_clocking_mmcm_dat_w_write(data);
 	hdmi_in1_clocking_mmcm_write_o_write(1);
-	while(!hdmi_in1_clocking_mmcm_drdy_o_read());
+	while(!hdmi_in1_clocking_mmcm_drdy_o_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in1_clocking_mmcm_write_o failed with adr %x, data %x\n", adr, data);
+	}
+	  
 }
 
 int hdmi_in1_clocking_mmcm_read_o(int adr) {
+  int timeout = 0;
 	hdmi_in1_clocking_mmcm_adr_write(adr);
 	hdmi_in1_clocking_mmcm_read_o_write(1);
-	while(!hdmi_in1_clocking_mmcm_drdy_o_read());
+	while(!hdmi_in1_clocking_mmcm_drdy_o_read() && timeout < MMCM_TIMEOUT)
+	  timeout++;
+	if( timeout >= MMCM_TIMEOUT ) {
+	  printf("hdmi_in1_clocking_mmcm_read_o failed with adr %x\n", adr);
+	}
+	  
 	return hdmi_in1_clocking_mmcm_dat_o_r_read();
 }
 #endif
@@ -214,7 +266,7 @@ static void hdmi_in_1_config_60_120mhz(void) {
 	hdmi_in1_clocking_mmcm_write(0x1A, (0x1 << 15) | (0x1c << 10) | 0x33e9); // lock register 3
 	hdmi_in1_clocking_mmcm_write(0x4E, (0x1 << 15) | (0x3 << 11) | (0x1 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
 	hdmi_in1_clocking_mmcm_write(0x4F, (0x2 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
-
+	
 #ifdef CSR_HDMI_IN1_CLOCKING_MMCM_DRDY_O_ADDR
 	hdmi_in1_clocking_mmcm_write_o(0x14, 0x1000 |  (2<<6) | 3);  /* clkfbout_mult  = 5 (2/3) */
 	hdmi_in1_clocking_mmcm_write_o(0x15, 1 << 7);                /* clkfbout_mult  = 5 (edge = 1) */
@@ -232,11 +284,11 @@ static void hdmi_in_1_config_60_120mhz(void) {
                 p_CLKFBOUT_MULT_F=5.0, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1,
                 i_CLKIN1=mmcm_clk0,  # uncompesated delay for best phase match between master/slave
                 i_CLKFBIN=mmcm_fb_o, o_CLKFBOUT=mmcm_fb_o,  */
-	hdmi_in1_clocking_mmcm_write(0x18, 0x3e8); // lock register 1
-	hdmi_in1_clocking_mmcm_write(0x19, (0x0 << 15) | (0xe << 10) | 0x3801); // lock register 2
-	hdmi_in1_clocking_mmcm_write(0x1A, (0x1 << 15) | (0xe << 10) | 0x3be9); // lock register 3
-	hdmi_in1_clocking_mmcm_write(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
-	hdmi_in1_clocking_mmcm_write(0x4F, (0x3 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
+	hdmi_in1_clocking_mmcm_write_o(0x18, 0x3e8); // lock register 1
+	hdmi_in1_clocking_mmcm_write_o(0x19, (0x0 << 15) | (0xe << 10) | 0x3801); // lock register 2
+	hdmi_in1_clocking_mmcm_write_o(0x1A, (0x1 << 15) | (0xe << 10) | 0x3be9); // lock register 3
+	hdmi_in1_clocking_mmcm_write_o(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
+	hdmi_in1_clocking_mmcm_write_o(0x4F, (0x3 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
 #endif
 }
 
@@ -279,22 +331,24 @@ static void hdmi_in_1_config_120_240mhz(void) {
                 p_CLKFBOUT_MULT_F=5.0, p_CLKFBOUT_PHASE=0.000, p_DIVCLK_DIVIDE=1,
                 i_CLKIN1=mmcm_clk0,  # uncompesated delay for best phase match between master/slave
                 i_CLKFBIN=mmcm_fb_o, o_CLKFBOUT=mmcm_fb_o,  */
-	hdmi_in1_clocking_mmcm_write(0x18, 0x3e8); // lock register 1
-	hdmi_in1_clocking_mmcm_write(0x19, (0x0 << 15) | (0xe << 10) | 0x3801); // lock register 2
-	hdmi_in1_clocking_mmcm_write(0x1A, (0x1 << 15) | (0xe << 10) | 0x3be9); // lock register 3
-	hdmi_in1_clocking_mmcm_write(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
-	hdmi_in1_clocking_mmcm_write(0x4F, (0x3 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
+	hdmi_in1_clocking_mmcm_write_o(0x18, 0x3e8); // lock register 1
+	hdmi_in1_clocking_mmcm_write_o(0x19, (0x0 << 15) | (0xe << 10) | 0x3801); // lock register 2
+	hdmi_in1_clocking_mmcm_write_o(0x1A, (0x1 << 15) | (0xe << 10) | 0x3be9); // lock register 3
+	hdmi_in1_clocking_mmcm_write_o(0x4E, (0x0 << 15) | (0x1 << 11) | (0x0 << 8) | 0x8); // filter register 1, reserved[7:0] is 0x8
+	hdmi_in1_clocking_mmcm_write_o(0x4F, (0x3 << 11) | (0x2 << 7)  | (0x0 << 4) | 0x8); // filter register 2, reserved[7:0] is 0x8
 #endif
 }
 #endif
+
 
 void mmcm_config_for_clock(int freq)
 {
 	/*
 	 * FIXME: we also need to configure phase detector
 	 */
-  
+  //   mmcm_dump(); // used to extract params if we make changes to VCOs
 #ifdef CSR_HDMI_IN0_BASE
+	hdmi_in0_clocking_mmcm_reset_write(1);
 	if(freq < 3000)
 		printf("Frequency too low for input MMCMs\r\n");
 	else if(freq < 6000)
@@ -305,9 +359,11 @@ void mmcm_config_for_clock(int freq)
 		hdmi_in_0_config_120_240mhz();
 	else
 		printf("Frequency too high for input MMCMs\r\n");
+	hdmi_in0_clocking_mmcm_reset_write(0);
 #endif
 
 #ifdef CSR_HDMI_IN1_BASE
+	hdmi_in1_clocking_mmcm_reset_write(1);
 	if(freq < 3000)
 		printf("Frequency too low for input MMCMs\r\n");
 	else if(freq < 6000)
@@ -318,6 +374,7 @@ void mmcm_config_for_clock(int freq)
 		hdmi_in_1_config_120_240mhz();
 	else
 		printf("Frequency too high for input MMCMs\r\n");
+	hdmi_in1_clocking_mmcm_reset_write(0);
 #endif
 }
 
