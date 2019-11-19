@@ -38,8 +38,6 @@ if [ "$?" != "0" ] ; then
 fi
 
 major=$(awk '/ netv2$/{print $1}' /proc/devices)
-for i in `seq 0 4` ; do
-    rm -f "/dev/netv2$i"
-    mknod -m 666 /dev/netv2$i c $major $i
-done
+rm -f "/dev/netv20"
+mknod -m 666 /dev/netv20 c $major 0
 

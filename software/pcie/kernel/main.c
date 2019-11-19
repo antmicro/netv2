@@ -76,7 +76,7 @@ static inline uint32_t netv2_readl(struct netv2_device  *s, uint32_t addr)
     uint32_t val;
     val = readl(s->bar0_addr + addr);
 #ifdef DEBUG_CSR
-    printk("csr_read: 0x%08x @ 0x%08x", val, addr);
+    printk("csr_read: 0x%08x @ 0x%08x\n", val, addr);
 #endif
     return val;
 }
@@ -84,7 +84,7 @@ static inline uint32_t netv2_readl(struct netv2_device  *s, uint32_t addr)
 static inline void netv2_writel(struct netv2_device *s, uint32_t addr, uint32_t val)
 {
 #ifdef DEBUG_CSR
-    printk("csr_write: 0x%08x @ 0x%08x", val, addr);
+    printk("csr_write: 0x%08x @ 0x%08x\n", val, addr);
 #endif
     return writel(val, s->bar0_addr + addr);
 }
@@ -103,24 +103,53 @@ static int netv2_release(struct inode *inode, struct file *file)
 
 static ssize_t netv2_read(struct file *file, char __user *data, size_t size, loff_t *offset)
 {
-    return 0;
+    int i;
+
+    uint32_t *buf;
+    buf = kzalloc(size, GFP_KERNEL);
+
+    if(!buf)
+        return -ENOMEM;
+
+    if (size % 4)
+        return -EIO;
+
+    for (i = 0; i < size/4; i++)
+	    buf[i] = netv2_readl(file->private_data, i*4);
+
+    if(copy_to_user(data, buf, size)){
+        kfree(buf);
+        return -EFAULT;
+    }
+    kfree(buf);
+
+    return size;
 }
 
 static ssize_t netv2_write(struct file *file, const char __user *data, size_t size, loff_t *offset)
 {
-    int ret, i;
+    int i;
 
-    char buf[4096];
+    uint32_t *buf;
+    buf = kzalloc(size, GFP_KERNEL);
 
-    if (size > sizeof(buf))
+    if(!buf)
+        return -ENOMEM;
+
+    if (size % 4)
         return -EIO;
 
-    ret = copy_from_user(&buf, data, size);
+    if(copy_from_user(buf, data, size)){
+        kfree(buf);
+        return -EFAULT;
+    }
 
-    for (i = 0; i < size; i++)
-	    netv2_writel(file->private_data, i, buf[i]);
+    for (i = 0; i < size/4; i++)
+	    netv2_writel(file->private_data, i*4, buf[i]);
 
-    return ret;
+    kfree(buf);
+
+    return size;
 }
 
 static struct file_operations netv2_fops = {
