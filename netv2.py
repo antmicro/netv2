@@ -321,6 +321,7 @@ class NeTV2SoC(SoCSDRAM):
 
     interrupt_map = {
         "ethmac": 3,
+        "hdmi_in0": 4,
     }
     interrupt_map.update(SoCSDRAM.interrupt_map)
 
@@ -509,7 +510,7 @@ class NeTV2SoC(SoCSDRAM):
             self.submodules.hdmi_in0 = HDMIIn(
                 hdmi_in0_pads,
                 self.sdram.crossbar.get_port(mode="write"),
-                fifo_depth=512,
+                fifo_depth=1024,
                 device="xc7",
                 split_mmcm=True)
             self.comb += self.hdmi_in0_freq.clk.eq(self.hdmi_in0.clocking.cd_pix.clk),

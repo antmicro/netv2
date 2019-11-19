@@ -20,13 +20,11 @@ int main(void)
 	irq_setie(1);
 	uart_init();
 
-	processor_init();
-	processor_update();
-	processor_start(3);
+	hdmi_out_setup(3);
+	hdmi_in_setup(3);
 	
 	while(1) {
-		for(int i = 0; i < 20000000; i++);
-		printf(".");
+		hdmi_service();
 	}
 
 	return 0;

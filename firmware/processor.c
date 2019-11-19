@@ -8,6 +8,7 @@
 #include <generated/mem.h>
 #include <time.h>
 
+#include "hdmi_in0.h"
 #include "mmcm.h"
 #include "processor.h"
 #include "edid.h"
@@ -311,22 +312,8 @@ const struct video_timing video_modes[PROCESSOR_MODE_COUNT] = {
 
 };
 
-void processor_list_modes(char *mode_descriptors)
-{
-	int i;
-	for(i=0;i<PROCESSOR_MODE_COUNT;i++) {
-		sprintf(&mode_descriptors[PROCESSOR_MODE_DESCLEN*i],
-			"%ux%u @%uHz %s",
-			video_modes[i].h_active,
-			video_modes[i].v_active,
-			calculate_refresh_rate(&(video_modes[i])),
-			video_modes[i].comment ? video_modes[i].comment : "");
-	}
-}
-
 static void fb_clkgen_write(int m, int d)
 {
-#ifdef CSR_HDMI_OUT0_BASE
 	/* clkfbout_mult = m */
 	if(m%2)
 		hdmi_out0_mmcm_write(0x14, 0x1000 | ((m/2)<<6) | (m/2 + 1));
@@ -343,7 +330,6 @@ static void fb_clkgen_write(int m, int d)
 	hdmi_out0_mmcm_write(0x8, 0x1000 | (5<<6) | 5);
 	/* clkout1_divide = 2 */
 	hdmi_out0_mmcm_write(0xa, 0x1000 | (1<<6) | 1);
-#endif
 }
 
 /* FIXME: add vco frequency check */
@@ -380,7 +366,6 @@ static void fb_set_mode(const struct video_timing *mode)
 
 	fb_get_clock_md(10*(mode->pixel_clock), &clock_m, &clock_d);
 
-#ifdef CSR_HDMI_OUT0_BASE
 	unsigned int hdmi_out0_enabled;
 	if (hdmi_out0_core_initiator_enable_read()) {
 		hdmi_out0_enabled = 1;
@@ -398,28 +383,20 @@ static void fb_set_mode(const struct video_timing *mode)
 	hdmi_out0_core_initiator_length_write(mode->h_active*mode->v_active*2);
 
 	hdmi_out0_core_initiator_enable_write(hdmi_out0_enabled);
-#endif
 
 	fb_clkgen_write(clock_m, clock_d);
 }
 
-int processor_mode = 0;
-
-void processor_init(void)
-{
-
-}
-
-void processor_start(int mode)
+void hdmi_out_setup(int mode)
 {
 	const struct video_timing *m = &video_modes[mode];
-	processor_mode = mode;
-	processor_h_active = m->h_active;
-	processor_v_active = m->v_active;
-	processor_refresh = calculate_refresh_rate(m);
+
+	hdmi_out0_core_initiator_base_write(0x42000000);
 
 	hdmi_out0_core_initiator_enable_write(0);
 	hdmi_out0_driver_clocking_mmcm_reset_write(1);
+
+       	mmcm_config_for_clock(m->pixel_clock);
 
 	fb_set_mode(m);
 
@@ -427,7 +404,29 @@ void processor_start(int mode)
 	hdmi_out0_core_initiator_enable_write(1);
 }
 
-void processor_update(void)
+int hdmi_in_mode = 0;
+
+void hdmi_in_setup(int mode)
 {
-	hdmi_out0_core_initiator_base_write(0x42000000);
+	const struct video_timing *m = &video_modes[mode];
+
+	hdmi_in_mode = mode;
+
+	hdmi_in0_edid_hpd_en_write(0);
+
+	hdmi_in0_disable();
+
+	mmcm_config_for_clock(m->pixel_clock);
+
+	hdmi_in0_init_video(m->h_active, m->v_active);
+
+	hdmi_in0_edid_hpd_en_write(1);
+
+	hdmi_in0_service(m->pixel_clock);
+}
+
+void hdmi_service(void)
+{
+	const struct video_timing *m = &video_modes[hdmi_in_mode];
+	hdmi_in0_service(m->pixel_clock);
 }

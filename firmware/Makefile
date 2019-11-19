@@ -8,6 +8,7 @@ OBJECTS=\
 		mmcm.o \
 		edid.o \
 		isr.o \
+		hdmi_in0.o \
 		main.o \
 		stdio_wrap.o
 
