@@ -243,7 +243,7 @@ class Platform(XilinxPlatform):
 
     def do_finalize(self, fragment):
         XilinxPlatform.do_finalize(self, fragment)
-        self.add_platform_command("""create_clock -name s7pciephy_pcie_clk -period 10 [get_nets pcie_x2_clk_p]""")
+        self.add_platform_command("""create_clock -name s7pciephy_pcie_clk -period 10 [get_nets pcie_x1_clk_p]""")
         from gateware import constraints
         constraints.apply_xilinx_pcie_constraints(self)
 
