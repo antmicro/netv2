@@ -387,11 +387,25 @@ static void fb_set_mode(const struct video_timing *mode)
 	fb_clkgen_write(clock_m, clock_d);
 }
 
+void clear_fb(unsigned int base, int hres, int vres)
+{
+	int i;
+	int size = hres * vres * 2;
+	flush_l2_cache();
+	volatile unsigned int *framebuffer = (unsigned int *)(base);
+	for(i=0; i<(size)/4; i++) {
+		framebuffer[i] = 0x88508850; /* black in YCbCr 4:2:2*/
+	}
+}
+
 void hdmi_out_setup(int mode)
 {
 	const struct video_timing *m = &video_modes[mode];
+	const unsigned int fb_base = 0x42000000;
 
-	hdmi_out0_core_initiator_base_write(0x42000000);
+	clear_fb(fb_base, m->h_active, m->v_active);
+
+	hdmi_out0_core_initiator_base_write(fb_base);
 
 	hdmi_out0_core_initiator_enable_write(0);
 	hdmi_out0_driver_clocking_mmcm_reset_write(1);
