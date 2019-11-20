@@ -13,6 +13,8 @@
 
 #include "processor.h"
 
+#define RES_800x600x60 3
+#define RES_1920x1080x60 11
 
 int main(void)
 {
@@ -20,8 +22,8 @@ int main(void)
 	irq_setie(1);
 	uart_init();
 
-	hdmi_out_setup(3);
-	hdmi_in_setup(3);
+	hdmi_out_setup(RES_800x600x60);
+	hdmi_in_setup(RES_800x600x60);
 	
 	while(1) {
 		hdmi_service();
