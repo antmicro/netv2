@@ -53,6 +53,7 @@
 
 #define NETV2_NAME "netv2"
 #define NETV2_MINOR_COUNT 32
+#define NETV2_BUF_SIZE 1*1024*1024
 
 struct netv2_device {
     struct pci_dev  *dev;
@@ -103,10 +104,10 @@ static int netv2_release(struct inode *inode, struct file *file)
 
 static ssize_t netv2_read(struct file *file, char __user *data, size_t size, loff_t *offset)
 {
-    int i;
+    int i, j;
 
     uint32_t *buf;
-    buf = kzalloc(size, GFP_KERNEL);
+    buf = kzalloc(NETV2_BUF_SIZE, GFP_KERNEL);
 
     if(!buf)
         return -ENOMEM;
@@ -114,13 +115,21 @@ static ssize_t netv2_read(struct file *file, char __user *data, size_t size, lof
     if (size % 4)
         return -EIO;
 
-    for (i = 0; i < size/4; i++)
-	    buf[i] = netv2_readl(file->private_data, i*4);
+    for (i = 0; i < size;) {
+        int xfer_size = NETV2_BUF_SIZE < size ? NETV2_BUF_SIZE : size;
+	printk(KERN_ERR "xfer off=%x, siz=%x\n", i, xfer_size);
 
-    if(copy_to_user(data, buf, size)){
-        kfree(buf);
-        return -EFAULT;
+        for (j = 0; j < xfer_size; j+=4)
+            buf[j/4] = netv2_readl(file->private_data, i + j + *offset);
+
+        if(copy_to_user(data + i, buf, xfer_size)){
+            kfree(buf);
+            return -EFAULT;
+        }
+
+	i += xfer_size;
     }
+
     kfree(buf);
 
     return size;
@@ -128,10 +137,11 @@ static ssize_t netv2_read(struct file *file, char __user *data, size_t size, lof
 
 static ssize_t netv2_write(struct file *file, const char __user *data, size_t size, loff_t *offset)
 {
-    int i;
+    int i, j;
 
     uint32_t *buf;
-    buf = kzalloc(size, GFP_KERNEL);
+
+    buf = kzalloc(NETV2_BUF_SIZE, GFP_KERNEL);
 
     if(!buf)
         return -ENOMEM;
@@ -139,13 +149,20 @@ static ssize_t netv2_write(struct file *file, const char __user *data, size_t si
     if (size % 4)
         return -EIO;
 
-    if(copy_from_user(buf, data, size)){
-        kfree(buf);
-        return -EFAULT;
-    }
+    for (i = 0; i < size;) {
+        int xfer_size = NETV2_BUF_SIZE < size ? NETV2_BUF_SIZE : size;
+	printk(KERN_ERR "xfer off=%x, siz=%x\n", i, xfer_size);
 
-    for (i = 0; i < size/4; i++)
-	    netv2_writel(file->private_data, i*4, buf[i]);
+        if(copy_from_user(buf, data + i, xfer_size)){
+            kfree(buf);
+            return -EFAULT;
+        }
+
+        for (j = 0; j < xfer_size; j+=4)
+            netv2_writel(file->private_data, i + j + *offset, buf[j/4]);
+
+	i += xfer_size;
+    }
 
     kfree(buf);
 
@@ -158,6 +175,7 @@ static struct file_operations netv2_fops = {
     .release = netv2_release,
     .read = netv2_read,
     .write = netv2_write,
+    .llseek = generic_file_llseek,
 };
 
 static int netv2_alloc_chdev(struct netv2_device *s)

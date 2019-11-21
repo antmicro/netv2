@@ -401,7 +401,7 @@ void clear_fb(unsigned int base, int hres, int vres)
 void hdmi_out_setup(int mode)
 {
 	const struct video_timing *m = &video_modes[mode];
-	const unsigned int fb_base = 0x42000000;
+	const unsigned int fb_base = 0x44000000;
 
 	clear_fb(fb_base, m->h_active, m->v_active);
 

@@ -428,7 +428,7 @@ class NeTV2SoC(SoCSDRAM):
         # pcie
         if with_pcie:
             # pcie phy
-            self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"), bar0_size=16*1024*1024)
+            self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"), bar0_size=32*1024*1024)
             platform.add_false_path_constraints(
                 self.crg.cd_sys.clk,
                 self.pcie_phy.cd_pcie.clk)
