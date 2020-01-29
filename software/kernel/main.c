@@ -38,6 +38,19 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/log2.h>
+#include <linux/cdev.h>
+#include <linux/poll.h>
+
+/* V4L2 */
+#include <linux/v4l2-dv-timings.h>
+#include <media/v4l2-device.h>
+#include <media/v4l2-dev.h>
+#include <media/v4l2-ioctl.h>
+#include <media/v4l2-dv-timings.h>
+#include <media/v4l2-ctrls.h>
+#include <media/v4l2-event.h>
+#include <media/videobuf2-v4l2.h>
+#include <media/videobuf2-dma-contig.h>
 
 #include "litepcie.h"
 #include "csr.h"
@@ -52,6 +65,12 @@
 
 #define LITEPCIE_NAME "litepcie"
 #define LITEPCIE_MINOR_COUNT 32
+
+#define HDMI2PCIE_DIR_IN 0
+#define HDMI2PCIE_DIR_OUT 1
+
+#define PCIE_BUF_SIZE 0x400000
+#define READ_BUF_OFF (7*PCIE_BUF_SIZE)
 
 struct litepcie_dma_chan {
     uint32_t base;
@@ -95,13 +114,50 @@ struct litepcie_device {
     struct list_head list;
     spinlock_t lock;
     int minor_base;
-    int channels;
+    int channels_count;
+    struct vid_channel *channels;
 };
 
 struct litepcie_chan_priv {
     struct litepcie_chan *chan;
     bool reader;
     bool writer;
+};
+
+struct vid_channel {
+    uint8_t dir;
+    uint32_t sequence;
+    struct litepcie_device *common;
+
+    struct v4l2_device v4l2_dev;
+    struct video_device vdev;
+    struct mutex lock;
+
+    struct v4l2_dv_timings timings;
+    struct v4l2_pix_format format;
+
+    unsigned int *fb_idx;
+
+    spinlock_t qlock;
+    struct vb2_queue queue;
+    struct list_head buf_list;
+};
+
+static const struct v4l2_dv_timings_cap hdmi2pcie_timings_cap = {
+    .type = V4L2_DV_BT_656_1120,
+    .reserved = { 0 },
+    V4L2_INIT_BT_TIMINGS(
+        640, 1920,
+        480, 1080,
+        25000000, 148500000,
+        V4L2_DV_BT_STD_CEA861,
+        V4L2_DV_BT_CAP_PROGRESSIVE
+    )
+};
+
+struct hdmi2pcie_buffer {
+    struct vb2_v4l2_buffer vb;
+    struct list_head list;
 };
 
 static LIST_HEAD(litepcie_list);
@@ -154,7 +210,7 @@ static int litepcie_dma_free(struct litepcie_device *s)
         return -ENODEV;
 
     /* for each dma channel */
-    for(i = 0; i < s->channels; i++) {
+    for(i = 0; i < s->channels_count; i++) {
         dmachan = &s->chan[i].dma;
         /* for each dma buffer */
         for(j = 0; j < DMA_BUFFER_COUNT; j++) {
@@ -191,7 +247,7 @@ static int litepcie_dma_init(struct litepcie_device *s)
         return -ENODEV;
 
     /* for each dma channel */
-    for(i = 0; i < s->channels; i++) {
+    for(i = 0; i < s->channels_count; i++) {
         dmachan = &s->chan[i].dma;
         /* for each dma buffer */
         for(j = 0; j < DMA_BUFFER_COUNT; j++) {
@@ -330,7 +386,7 @@ void litepcie_stop_dma(struct litepcie_device *s)
     struct litepcie_dma_chan *dmachan;
     int i;
 
-    for(i = 0; i < s->channels; i++) {
+    for(i = 0; i < s->channels_count; i++) {
         dmachan = &s->chan[i].dma;
         litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
         litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 0);
@@ -353,7 +409,7 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
     irq_vector &= irq_enable;
     clear_mask = 0;
 
-    for(i = 0; i < s->channels; i++) {
+    for(i = 0; i < s->channels_count; i++) {
         chan = &s->chan[i];
         /* dma reader interrupt handling */
         if(irq_vector & (1 << chan->dma.reader_interrupt)) {
@@ -392,6 +448,485 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
     return IRQ_HANDLED;
 }
 
+/* V4L2 fncts */
+
+static inline struct hdmi2pcie_buffer *to_hdmi2pcie_buffer(struct vb2_buffer *vb2)
+{
+	return container_of(vb2, struct hdmi2pcie_buffer, vb);
+}
+
+static int queue_setup(struct vb2_queue *vq,
+		       unsigned int *nbuffers, unsigned int *nplanes,
+		       unsigned int sizes[], struct device *alloc_devs[])
+{
+	struct vid_channel *chan = vb2_get_drv_priv(vq);
+
+	if (vq->num_buffers + *nbuffers < 3)
+		*nbuffers = 3 - vq->num_buffers;
+
+	if (*nplanes)
+		return sizes[0] < chan->format.sizeimage ? -EINVAL : 0;
+
+	*nplanes = 1;
+	sizes[0] = chan->format.sizeimage;
+	return 0;
+}
+
+static int buffer_prepare(struct vb2_buffer *vb)
+{
+	struct vid_channel *chan = vb2_get_drv_priv(vb->vb2_queue);
+	unsigned long size = chan->format.sizeimage;
+
+	if (vb2_plane_size(vb, 0) < size) {
+		dev_err(&chan->common->dev->dev, "buffer too small (%lu < %lu)\n",
+			 vb2_plane_size(vb, 0), size);
+		return -EINVAL;
+	}
+
+	vb2_set_plane_payload(vb, 0, size);
+	return 0;
+}
+
+static void buffer_queue(struct vb2_buffer *vb)
+{
+	struct vid_channel *chan = vb2_get_drv_priv(vb->vb2_queue);
+	//struct hdmi2pcie_buffer *hbuf = to_hdmi2pcie_buffer(vb);
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	unsigned long size = vb2_get_plane_payload(vb, 0);
+	void *buf = vb2_plane_vaddr(vb, 0);
+	unsigned long flags;
+	unsigned long fb_idx = (readl(chan->fb_idx) + 1) % 4;
+
+	spin_lock_irqsave(&chan->qlock, flags);
+	//list_add_tail(&hbuf->list, &priv->buf_list);
+	if (chan->dir == HDMI2PCIE_DIR_IN)
+		memcpy_fromio(buf, chan->common->bar0_addr + READ_BUF_OFF, size);
+	else
+		memcpy_toio(chan->common->bar0_addr + fb_idx * PCIE_BUF_SIZE, buf, size);
+
+	writel(fb_idx, chan->fb_idx);
+
+	vb->timestamp = ktime_get_ns();
+	vbuf->sequence = chan->sequence++;
+	vbuf->field = V4L2_FIELD_NONE;
+
+	vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
+
+	spin_unlock_irqrestore(&chan->qlock, flags);
+}
+
+static void return_all_buffers(struct vid_channel *chan,
+			       enum vb2_buffer_state state)
+{
+	struct hdmi2pcie_buffer *buf, *node;
+	unsigned long flags;
+
+	spin_lock_irqsave(&chan->qlock, flags);
+	list_for_each_entry_safe(buf, node, &chan->buf_list, list) {
+		vb2_buffer_done(&buf->vb.vb2_buf, state);
+		list_del(&buf->list);
+	}
+	spin_unlock_irqrestore(&chan->qlock, flags);
+}
+
+static int start_streaming(struct vb2_queue *vq, unsigned int count)
+{
+	struct vid_channel *chan = vb2_get_drv_priv(vq);
+	int ret = 0;
+
+	chan->sequence = 0;
+
+	//TODO: Start DMA
+
+	if (ret) {
+		return_all_buffers(chan, VB2_BUF_STATE_QUEUED);
+	}
+	return ret;
+}
+
+static void stop_streaming(struct vb2_queue *vq)
+{
+	struct vid_channel *chan = vb2_get_drv_priv(vq);
+
+	return_all_buffers(chan, VB2_BUF_STATE_ERROR);
+}
+
+static struct vb2_ops hdmi2pcie_qops = {
+	.queue_setup		= queue_setup,
+	.buf_prepare		= buffer_prepare,
+	.buf_queue		= buffer_queue,
+	.start_streaming	= start_streaming,
+	.stop_streaming		= stop_streaming,
+	.wait_prepare		= vb2_ops_wait_prepare,
+	.wait_finish		= vb2_ops_wait_finish,
+};
+
+static int hdmi2pcie_querycap(struct file *file, void *private,
+			     struct v4l2_capability *cap)
+{
+	struct vid_channel *chan = video_drvdata(file);
+
+	strlcpy(cap->driver, KBUILD_MODNAME, sizeof(cap->driver));
+	strlcpy(cap->card, "HDMI2PCIe", sizeof(cap->card));
+	snprintf(cap->bus_info, sizeof(cap->bus_info), "PCI:%s",
+		 pci_name(chan->common->dev));
+	return 0;
+}
+
+static void hdmi2pcie_fill_pix_format(struct vid_channel *chan,
+				     struct v4l2_pix_format *pix)
+{
+	pix->pixelformat = V4L2_PIX_FMT_UYVY;
+	pix->width = chan->timings.bt.width;
+	pix->height = chan->timings.bt.height;
+	if (chan->timings.bt.interlaced) {
+		pix->field = V4L2_FIELD_ALTERNATE;
+		pix->height /= 2;
+	} else {
+		pix->field = V4L2_FIELD_NONE;
+	}
+	pix->colorspace = V4L2_COLORSPACE_REC709;
+
+	pix->bytesperline = pix->width * 2;
+	pix->sizeimage = pix->bytesperline * pix->height;
+	pix->priv = 0;
+}
+
+static int hdmi2pcie_try_fmt_vid(struct file *file, void *private,
+				    struct v4l2_format *f)
+{
+	struct vid_channel *chan = video_drvdata(file);
+	struct v4l2_pix_format *pix = &f->fmt.pix;
+
+	if (pix->pixelformat != V4L2_PIX_FMT_UYVY) {
+		dev_info(&chan->common->dev->dev, "%s: wrong format\n", __PRETTY_FUNCTION__);
+	}
+	hdmi2pcie_fill_pix_format(chan, pix);
+	return 0;
+}
+
+static int hdmi2pcie_s_fmt_vid(struct file *file, void *private,
+				  struct v4l2_format *f)
+{
+	struct vid_channel *chan = video_drvdata(file);
+	int ret;
+
+	ret = hdmi2pcie_try_fmt_vid(file, private, f);
+	if (ret)
+		return ret;
+
+	if (vb2_is_busy(&chan->queue))
+		return -EBUSY;
+
+	// TODO: set format on the device
+	chan->format = f->fmt.pix;
+	return 0;
+}
+
+static int hdmi2pcie_g_fmt_vid(struct file *file, void *private,
+				  struct v4l2_format *f)
+{
+	struct vid_channel *chan = video_drvdata(file);
+
+	f->fmt.pix = chan->format;
+	return 0;
+}
+
+static int hdmi2pcie_enum_fmt_vid(struct file *file, void *private,
+				     struct v4l2_fmtdesc *f)
+{
+	if (f->index > 0)
+		return -EINVAL;
+
+	f->pixelformat = V4L2_PIX_FMT_UYVY;
+	return 0;
+}
+
+static int hdmi2pcie_s_dv_timings(struct file *file, void *_fh,
+				 struct v4l2_dv_timings *timings)
+{
+	struct vid_channel *chan = video_drvdata(file);
+
+	if (!v4l2_valid_dv_timings(timings, &hdmi2pcie_timings_cap, NULL, NULL))
+		return -EINVAL;
+
+	if (!v4l2_find_dv_timings_cap(timings, &hdmi2pcie_timings_cap,
+				      0, NULL, NULL))
+		return -EINVAL;
+
+	if (v4l2_match_dv_timings(timings, &chan->timings, 0, false))
+		return 0;
+
+	if (vb2_is_busy(&chan->queue))
+		return -EBUSY;
+
+	chan->timings = *timings;
+
+	hdmi2pcie_fill_pix_format(chan, &chan->format);
+	return 0;
+}
+
+static int hdmi2pcie_g_dv_timings(struct file *file, void *_fh,
+				 struct v4l2_dv_timings *timings)
+{
+	struct vid_channel *chan = video_drvdata(file);
+
+	*timings = chan->timings;
+	return 0;
+}
+
+static int hdmi2pcie_enum_dv_timings(struct file *file, void *_fh,
+				    struct v4l2_enum_dv_timings *timings)
+{
+	return v4l2_enum_dv_timings_cap(timings, &hdmi2pcie_timings_cap,
+					NULL, NULL);
+}
+
+static int hdmi2pcie_query_dv_timings(struct file *file, void *_fh,
+				     struct v4l2_dv_timings *timings)
+{
+	// TODO: detect current timings/signal state (out of range, disconnected, ...)
+
+	return 0;
+}
+
+static int hdmi2pcie_dv_timings_cap(struct file *file, void *fh,
+				   struct v4l2_dv_timings_cap *cap)
+{
+	*cap = hdmi2pcie_timings_cap;
+	return 0;
+}
+
+static int hdmi2pcie_enum_input(struct file *file, void *private,
+			       struct v4l2_input *i)
+{
+	if (i->index > 0)
+		return -EINVAL;
+
+	i->type = V4L2_INPUT_TYPE_CAMERA;
+	strlcpy(i->name, "HDMI In", sizeof(i->name));
+	i->capabilities = V4L2_IN_CAP_DV_TIMINGS;
+	return 0;
+}
+
+static int hdmi2pcie_s_input(struct file *file, void *private, unsigned int i)
+{
+	struct vid_channel *chan = video_drvdata(file);
+
+	if (i > 0)
+		return -EINVAL;
+
+	if (vb2_is_busy(&chan->queue))
+		return -EBUSY;
+
+	chan->vdev.tvnorms = 0;
+
+	hdmi2pcie_fill_pix_format(chan, &chan->format);
+	return 0;
+}
+
+static int hdmi2pcie_g_input(struct file *file, void *private, unsigned int *i)
+{
+	*i = 0;
+	return 0;
+}
+
+static int hdmi2pcie_enum_output(struct file *file, void *private,
+			       struct v4l2_output *i)
+{
+	if (i->index > 0)
+		return -EINVAL;
+
+	i->type = V4L2_OUTPUT_TYPE_ANALOG;
+	strlcpy(i->name, "HDMI Out", sizeof(i->name));
+	i->capabilities = V4L2_OUT_CAP_DV_TIMINGS;
+	return 0;
+}
+
+static int hdmi2pcie_s_output(struct file *file, void *private, unsigned int i)
+{
+	struct vid_channel *chan = video_drvdata(file);
+
+	if (i > 0)
+		return -EINVAL;
+
+	if (vb2_is_busy(&chan->queue))
+		return -EBUSY;
+
+	chan->vdev.tvnorms = 0;
+
+	hdmi2pcie_fill_pix_format(chan, &chan->format);
+	return 0;
+}
+
+static int hdmi2pcie_g_output(struct file *file, void *private, unsigned int *i)
+{
+	*i = 0;
+	return 0;
+}
+
+static const struct v4l2_ioctl_ops hdmi2pcie_ioctl_in_ops = {
+	.vidioc_querycap = hdmi2pcie_querycap,
+
+	.vidioc_try_fmt_vid_cap = hdmi2pcie_try_fmt_vid,
+	.vidioc_s_fmt_vid_cap = hdmi2pcie_s_fmt_vid,
+	.vidioc_g_fmt_vid_cap = hdmi2pcie_g_fmt_vid,
+	.vidioc_enum_fmt_vid_cap = hdmi2pcie_enum_fmt_vid,
+
+	.vidioc_s_dv_timings = hdmi2pcie_s_dv_timings,
+	.vidioc_g_dv_timings = hdmi2pcie_g_dv_timings,
+	.vidioc_enum_dv_timings = hdmi2pcie_enum_dv_timings,
+	.vidioc_query_dv_timings = hdmi2pcie_query_dv_timings,
+	.vidioc_dv_timings_cap = hdmi2pcie_dv_timings_cap,
+
+	.vidioc_enum_input = hdmi2pcie_enum_input,
+	.vidioc_g_input = hdmi2pcie_g_input,
+	.vidioc_s_input = hdmi2pcie_s_input,
+
+	.vidioc_reqbufs = vb2_ioctl_reqbufs,
+	.vidioc_create_bufs = vb2_ioctl_create_bufs,
+	.vidioc_querybuf = vb2_ioctl_querybuf,
+	.vidioc_qbuf = vb2_ioctl_qbuf,
+	.vidioc_dqbuf = vb2_ioctl_dqbuf,
+	.vidioc_expbuf = vb2_ioctl_expbuf,
+	.vidioc_streamon = vb2_ioctl_streamon,
+	.vidioc_streamoff = vb2_ioctl_streamoff,
+
+	.vidioc_log_status = v4l2_ctrl_log_status,
+	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
+	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
+};
+
+static const struct v4l2_ioctl_ops hdmi2pcie_ioctl_out_ops = {
+	.vidioc_querycap = hdmi2pcie_querycap,
+
+	.vidioc_try_fmt_vid_out = hdmi2pcie_try_fmt_vid,
+	.vidioc_s_fmt_vid_out = hdmi2pcie_s_fmt_vid,
+	.vidioc_g_fmt_vid_out = hdmi2pcie_g_fmt_vid,
+	.vidioc_enum_fmt_vid_out = hdmi2pcie_enum_fmt_vid,
+
+	.vidioc_s_dv_timings = hdmi2pcie_s_dv_timings,
+	.vidioc_g_dv_timings = hdmi2pcie_g_dv_timings,
+	.vidioc_enum_dv_timings = hdmi2pcie_enum_dv_timings,
+	.vidioc_query_dv_timings = hdmi2pcie_query_dv_timings,
+	.vidioc_dv_timings_cap = hdmi2pcie_dv_timings_cap,
+
+	.vidioc_enum_output = hdmi2pcie_enum_output,
+	.vidioc_g_output = hdmi2pcie_g_output,
+	.vidioc_s_output = hdmi2pcie_s_output,
+
+	.vidioc_reqbufs = vb2_ioctl_reqbufs,
+	.vidioc_create_bufs = vb2_ioctl_create_bufs,
+	.vidioc_querybuf = vb2_ioctl_querybuf,
+	.vidioc_qbuf = vb2_ioctl_qbuf,
+	.vidioc_dqbuf = vb2_ioctl_dqbuf,
+	.vidioc_expbuf = vb2_ioctl_expbuf,
+	.vidioc_streamon = vb2_ioctl_streamon,
+	.vidioc_streamoff = vb2_ioctl_streamoff,
+
+	.vidioc_log_status = v4l2_ctrl_log_status,
+	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
+	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
+};
+
+static const struct v4l2_file_operations hdmi2pcie_fops = {
+	.owner = THIS_MODULE,
+	.open = v4l2_fh_open,
+	.release = vb2_fop_release,
+	.unlocked_ioctl = video_ioctl2,
+	.read = vb2_fop_read,
+	.mmap = vb2_fop_mmap,
+	.poll = vb2_fop_poll,
+};
+
+static int hdmi2pcie_register_video_dev(struct pci_dev *pdev, struct vid_channel *chan, uint8_t dir)
+{
+	static const struct v4l2_dv_timings timings_def = V4L2_DV_BT_CEA_1920X1080P60;
+	struct video_device *vdev = &chan->vdev;
+	struct vb2_queue *q = &chan->queue;
+	int ret;
+
+	chan->dir = dir;
+
+	ret = v4l2_device_register(&pdev->dev, &chan->v4l2_dev);
+	if (ret) {
+		dev_err(&pdev->dev, "v4l2_device_register failed, ret=%d\n", ret);
+		return ret;
+	}
+
+	// Point to last 4 bytes of a 16MiB area
+	if (dir == HDMI2PCIE_DIR_IN)
+		chan->fb_idx = (unsigned int*)(chan->common->bar0_addr + 8*PCIE_BUF_SIZE - sizeof(unsigned int));
+	else
+		chan->fb_idx = (unsigned int*)(chan->common->bar0_addr + 4*PCIE_BUF_SIZE - sizeof(unsigned int));
+
+	mutex_init(&chan->lock);
+
+	q->io_modes = VB2_MMAP | VB2_DMABUF;
+	q->dev = &pdev->dev;
+	q->drv_priv = chan;
+	q->buf_struct_size = sizeof(struct hdmi2pcie_buffer);
+	q->ops = &hdmi2pcie_qops;
+	q->mem_ops = &vb2_dma_contig_memops;
+	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+	q->min_buffers_needed = 2;
+	q->lock = &chan->lock;
+	q->gfp_flags = GFP_DMA32;
+
+	if (dir == HDMI2PCIE_DIR_IN) {
+		q->io_modes |= VB2_READ;
+		q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	} else {
+		q->io_modes |= VB2_WRITE;
+		q->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+	}
+
+	ret = vb2_queue_init(q);
+	if (ret) {
+		dev_err(&pdev->dev, "vb2_queue_init failed, ret=%d\n", ret);
+		goto v4l2_unregister;
+	}
+
+	INIT_LIST_HEAD(&chan->buf_list);
+	spin_lock_init(&chan->qlock);
+
+	strlcpy(vdev->name, LITEPCIE_NAME, sizeof(vdev->name));
+	vdev->release = video_device_release_empty;
+
+	vdev->fops = &hdmi2pcie_fops;
+	vdev->device_caps = V4L2_CAP_READWRITE | V4L2_CAP_STREAMING;
+
+	if (dir == HDMI2PCIE_DIR_IN) {
+		vdev->ioctl_ops = &hdmi2pcie_ioctl_in_ops;
+		vdev->device_caps |= V4L2_CAP_VIDEO_CAPTURE;
+	} else {
+		vdev->ioctl_ops = &hdmi2pcie_ioctl_out_ops;
+		vdev->device_caps |= V4L2_CAP_VIDEO_OUTPUT;
+	}
+
+
+	vdev->lock = &chan->lock;
+	vdev->queue = q;
+	vdev->vfl_dir = dir ? VFL_DIR_TX : VFL_DIR_RX;
+	vdev->v4l2_dev = &chan->v4l2_dev;
+	video_set_drvdata(vdev, chan);
+
+	ret = video_register_device(vdev, VFL_TYPE_GRABBER, -1);
+	if (ret) {
+		dev_err(&pdev->dev, "video_register_device failed, ret=%d\n", ret);
+		goto v4l2_unregister;
+	}
+
+	chan->timings = timings_def;
+
+	dev_info(&pdev->dev, "V4L2 HDMI2PCIe driver loaded");
+	return 0;
+
+v4l2_unregister:
+	v4l2_device_unregister(&chan->v4l2_dev);
+	return ret;
+}
+/* cdev fcns */
 static int litepcie_open(struct inode *inode, struct file *file)
 {
     int subminor;
@@ -407,7 +942,7 @@ static int litepcie_open(struct inode *inode, struct file *file)
 
     list_for_each_entry(litepcie, &litepcie_list, list) {
         if( (litepcie->minor_base <= subminor) &&
-            (subminor < litepcie->minor_base + litepcie->channels) ) {
+            (subminor < litepcie->minor_base + litepcie->channels_count) ) {
 
             chan = &litepcie->chan[subminor - litepcie->minor_base];
             chan_priv->chan = chan;
@@ -902,7 +1437,7 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
 
     index = litepcie_minor_idx;
     s->minor_base = litepcie_minor_idx;
-    for(i = 0; i < s->channels; i++) {
+    for(i = 0; i < s->channels_count; i++) {
         s->chan[i].cdev = cdev_alloc();
         if(!s->chan[i].cdev) {
             ret = -ENOMEM;
@@ -920,7 +1455,7 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
     }
 
     index = litepcie_minor_idx;
-    for(i = 0; i < s->channels; i++) {
+    for(i = 0; i < s->channels_count; i++) {
         printk(KERN_INFO LITEPCIE_NAME " Creating /dev/litepcie%d\n", index);
         if(!device_create(litepcie_class, NULL, MKDEV(litepcie_major, index), NULL, "litepcie%d", index)) {
             ret = -EINVAL;
@@ -941,7 +1476,7 @@ fail_create:
     }
 
 fail_alloc:
-    for(i = 0; i < s->channels;i++) {
+    for(i = 0; i < s->channels_count;i++) {
         if(s->chan[i].cdev) {
             cdev_del(s->chan[i].cdev);
             s->chan[i].cdev=NULL;
@@ -955,7 +1490,7 @@ static void litepcie_free_chdev(struct litepcie_device *s)
 {
     int i;
 
-    for(i = 0; i < s->channels; i++){
+    for(i = 0; i < s->channels_count; i++){
         device_destroy(litepcie_class, MKDEV(litepcie_major, s->minor_base + i));
         if(s->chan[i].cdev) {
             cdev_del(s->chan[i].cdev);
@@ -1086,7 +1621,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     litepcie_writel(litepcie_dev, CSR_CRG_RESET_ADDR, 1);
     udelay(1000);
 
-    litepcie_dev->channels = DMA_CHANNELS;
+    litepcie_dev->channels_count = DMA_CHANNELS;
 
     /* create all chardev in /dev */
     ret = litepcie_alloc_chdev(litepcie_dev);
@@ -1095,7 +1630,17 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         goto fail5;
     }
 
-    for(i = 0; i < litepcie_dev->channels; i++) {
+    litepcie_dev->channels = kzalloc(sizeof(*litepcie_dev->channels) * litepcie_dev->channels_count, GFP_KERNEL);
+    if(!litepcie_dev->channels) {
+        dev_err(&dev->dev, "Cannot allocate memory\n");
+        ret = -ENOMEM;
+        goto fail1;
+    }
+
+    for (i = 0; i < litepcie_dev->channels_count; i++)
+        litepcie_dev->channels[i].common = litepcie_dev;
+
+    for(i = 0; i < litepcie_dev->channels_count; i++) {
         litepcie_dev->chan[i].index = i;
         litepcie_dev->chan[i].block_size = DMA_BUFFER_SIZE;
         litepcie_dev->chan[i].minor = litepcie_dev->minor_base + i;
@@ -1143,11 +1688,20 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         &current_gateware_revision.yy,
         &current_gateware_revision.mm,
         &current_gateware_revision.dd);
-    if (compare_revisions(minimal_gateware_revision, current_gateware_revision) > 0)
+
+    if (compare_revisions(minimal_gateware_revision, current_gateware_revision) > 0) {
         printk(KERN_INFO LITEPCIE_NAME " \e[1mHW needs update to gateware revision %04d-%02d-%02d\e[0m\n",
             minimal_gateware_revision.yy,
             minimal_gateware_revision.mm,
             minimal_gateware_revision.dd);
+    }
+
+	ret = hdmi2pcie_register_video_dev(dev, &litepcie_dev->channels[0], HDMI2PCIE_DIR_IN);
+	ret += hdmi2pcie_register_video_dev(dev, &litepcie_dev->channels[1], HDMI2PCIE_DIR_OUT);
+	if (ret) {
+		dev_err(&dev->dev, "Failed to register V4L2 device");
+		goto fail6;
+	}
 
     return 0;
 
@@ -1172,6 +1726,7 @@ fail1:
 static void litepcie_pci_remove(struct pci_dev *dev)
 {
     struct litepcie_device *litepcie_dev;
+    int i;
 
     litepcie_dev = pci_get_drvdata(dev);
 
@@ -1191,6 +1746,10 @@ static void litepcie_pci_remove(struct pci_dev *dev)
         pci_iounmap(dev, litepcie_dev->bar0_addr);
     pci_disable_device(dev);
     pci_release_regions(dev);
+    for (i=0; i < litepcie_dev->channels_count; i++) {
+        video_unregister_device(&litepcie_dev->channels[i].vdev);
+        v4l2_device_unregister(&litepcie_dev->channels[i].v4l2_dev);
+    }
     if(litepcie_dev){
         litepcie_dma_free(litepcie_dev);
         kfree(litepcie_dev);
