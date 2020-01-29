@@ -258,6 +258,8 @@ class NeTV2(SoCSDRAM):
                 self.hdmi_in0.clocking.cd_pix5x.clk)
             self.platform.add_period_constraint(platform.lookup_request("hdmi_in", 0).clk_p, 1e9/74.25e6)
 
+            self.add_interrupt("hdmi_in0")
+
         # HDMI Out 0 -------------------------------------------------------------------------------
         if with_hdmi_out0:
             self.submodules.hdmi_out0 = VideoOut(
