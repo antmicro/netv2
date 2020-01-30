@@ -771,7 +771,7 @@ static const struct v4l2_file_operations hdmi2pcie_fops = {
 
 static int hdmi2pcie_register_video_dev(struct pci_dev *pdev, struct vid_channel *chan, uint8_t dir)
 {
-	static const struct v4l2_dv_timings timings_def = V4L2_DV_BT_CEA_1920X1080P60;
+	static const struct v4l2_dv_timings timings_def = V4L2_DV_BT_CEA_1280X720P60;//V4L2_DV_BT_CEA_1920X1080P60;
 	struct video_device *vdev = &chan->vdev;
 	struct vb2_queue *q = &chan->queue;
 	int ret;
