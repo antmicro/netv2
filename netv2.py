@@ -203,7 +203,7 @@ class NeTV2(SoCSDRAM):
 
             dma_reader_dram_port = self.sdram.crossbar.get_port(
                     mode="read",
-                    data_width = 16,
+                    data_width = 64,
                     clock_domain = "sys",
                     reverse = True
                     )
@@ -212,15 +212,22 @@ class NeTV2(SoCSDRAM):
 
             self.add_csr("dma_reader_initiator")
 
-            self.submodules.dma_reader = ClockDomainsRenamer(dma_reader_dram_port.cd)(
-                    DMAReader(
+            self.submodules.dma_reader = DMAReader(
                         dram_port = dma_reader_dram_port,
                         fifo_depth = 512,
                         genlock_stream = None
-                    ))
+                    )
             self.add_csr("dma_reader")
 
-            self.comb += self.dma_reader.source.connect(self.pcie_dma0.sink)
+            video_data_endian_swap = Signal(64)
+            for b in range(0, 8):
+                src_byte = 7 - b
+                self.comb += video_data_endian_swap[b*8:(b+1)*8].eq(self.dma_reader.source.data[src_byte*8:(src_byte + 1)*8])
+
+            self.comb += self.dma_reader.source.ready.eq(self.pcie_dma0.sink.ready)
+            self.comb += self.pcie_dma0.sink.valid.eq(self.dma_reader.source.valid)
+            self.comb += self.pcie_dma0.sink.data.eq(video_data_endian_swap)
+
             self.comb += self.dma_reader_initiator.source.connect(self.dma_reader.sink, keep=list_signals(frame_dma_layout))
             self.comb += self.dma_reader.sink.valid.eq(self.dma_reader_initiator.source.valid)
             self.comb += self.dma_reader_initiator.source.ready.eq(self.dma_reader.sink.ready)
