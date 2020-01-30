@@ -8,6 +8,7 @@
 #include <system.h>
 
 #include "sdcard.h"
+#define SYSTEM_CLOCK_FREQUENCY CONFIG_CLOCK_FREQUENCY
 
 #define SDCARD_DEBUG
 

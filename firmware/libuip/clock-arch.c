@@ -5,6 +5,7 @@
 #include "clock-arch.h"
 #include <generated/csr.h>
 
+#define SYSTEM_CLOCK_FREQUENCY CONFIG_CLOCK_FREQUENCY
 /*-----------------------------------------------------------------------------------*/
 void clock_init(void)
 {

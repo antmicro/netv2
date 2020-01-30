@@ -5,81 +5,84 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <uart.h>
 #include <time.h>
 #include <console.h>
+#include "ci.h"
 
-#define TEST_BASE 0x20000
-#define TEST_SIZE 64*1024*1024
 
-unsigned int write_test(unsigned int base, unsigned int length) {
-	unsigned int ticks;
-	unsigned int speed;
-	generator_reset_write(1);
-	generator_reset_write(0);
-	generator_base_write(base);
-	generator_length_write(length);
-	generator_start_write(1);
-	while(generator_done_read() == 0);
-	ticks = generator_ticks_read();
-	speed = SYSTEM_CLOCK_FREQUENCY/ticks;
-	speed = length*speed/1000000;
-	speed = 8*speed;
-	return speed;
-}
+#define test_size 64*1024*1024
 
-unsigned int read_test(unsigned int base, unsigned int length) {
-	unsigned int ticks;
-	unsigned int speed;
-	checker_reset_write(1);
-	checker_reset_write(0);
-	checker_base_write(base);
-	checker_length_write(length);
-	checker_start_write(1);
-	while(checker_done_read() == 0);
-	ticks = checker_ticks_read();
-	speed = SYSTEM_CLOCK_FREQUENCY/ticks;
-	speed = length*speed/1000000;
-	speed = 8*speed;
-	return speed;
-}
+unsigned int ticks;
+unsigned int speed;
 
-void bist_test(void)
+static void busy_wait(unsigned int ds)
 {
-	unsigned int write_speed;
-	unsigned int read_speed;
-	unsigned int tested_length;
-	unsigned int tested_errors;
+	timer0_en_write(0);
+	timer0_reload_write(0);
+	timer0_load_write(CONFIG_CLOCK_FREQUENCY/10*ds);
+	timer0_en_write(1);
+	timer0_update_value_write(1);
+	while(timer0_value_read()) timer0_update_value_write(1);
+}
 
-	unsigned int i;
+void bist_test(void) {
+	while(readchar_nonblock() == 0) {
+			// write
+			printf("writing %d Mbytes...", test_size/(1024*1024));
+			generator_reset_write(1);
+			generator_reset_write(0);
+			generator_base_write(0x10000);
+			generator_length_write((test_size*8)/128);
 
-	/* init */
-	i = 0;
-	tested_length = 0;
-	tested_errors = 0;
-	for(;;) {
-		/* exit on key pressed */
-		if (readchar_nonblock())
-			break;
+			timer0_en_write(0);
+			timer0_load_write(0xffffffff);
+			timer0_en_write(1);
 
-		/* write */
-		write_speed = write_test(TEST_BASE, TEST_SIZE);
+			generator_start_write(1);
+			while(generator_done_read() == 0);
 
-		/* read */
-		read_speed = read_test(TEST_BASE, TEST_SIZE);
+			timer0_update_value_write(1);
+			ticks = timer0_value_read();
+			ticks = 0xffffffff - ticks;
+			speed = CONFIG_CLOCK_FREQUENCY/ticks;
+			speed = test_size*speed/1000000;
+			speed = 8*speed;
+			printf(" / %u Mbps\n", speed);
 
-		/* results */
-		if (i%10 == 0)
-			printf("WR_SPEED(Mbps) RD_SPEED(Mbps)  TESTED(MB)       ERRORS\n");
-		i++;
-		tested_length += TEST_SIZE/(1024*1024);
-		tested_errors += checker_errors_read();
-		printf("%14d %14d %11d %12d\n",
-			write_speed,
-			read_speed,
-			tested_length,
-			tested_errors);
+			// read
+			printf("reading %d Mbytes...", test_size/(1024*1024));
+			checker_reset_write(1);
+			checker_reset_write(0);
+			checker_base_write(0x10000);
+			checker_length_write((test_size*8)/128);
+
+			timer0_en_write(0);
+			timer0_load_write(0xffffffff);
+			timer0_en_write(1);
+
+			checker_start_write(1);
+			while(checker_done_read() == 0);
+
+			timer0_update_value_write(1);
+			ticks = timer0_value_read();
+			ticks = 0xffffffff - ticks;
+			speed = CONFIG_CLOCK_FREQUENCY/ticks;
+			speed = test_size*speed/1000000;
+			speed = 8*speed;
+			printf(" / %u Mbps\n", speed);
+
+			// errors
+#ifdef CSR_CHECKER_ERR_COUNT_ADDR
+			printf("errors: %d\n", checker_err_count_read());
+#endif
+#ifdef CSR_CHECKER_ERRORS_ADDR
+			printf("errors: %d\n", checker_errors_read());
+#endif
+
+			// delay
+			busy_wait(10);
 	}
+
 }
 
 #endif

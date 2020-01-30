@@ -1,6 +1,8 @@
 #ifndef __PATTERN_H
 #define __PATTERN_H
 
+#include "framebuffer.h"
+
 /* Colors in YCBCR422 format (see pattern.py) */
 #define YCBCR422_WHITE  0x80ff80ff
 #define YCBCR422_YELLOW 0x00e194e1
@@ -23,12 +25,14 @@
 
 unsigned int pattern_framebuffer_base(void);
 
-int pattern;
-
-#define COLOR_BAR_PATTERN 0
-#define BLACK_WHITE_BAR_PATTERN 1
+enum {
+	PATTERN_COLOR_BARS = 0,
+	PATTERN_VERTICAL_BLACK_WHITE_LINES = 1,
+	PATTERN_MAX,
+} pattern;
 
 void pattern_fill_framebuffer(int h_active, int m_active);
 void pattern_service(void);
+void pattern_next(void);
 
 #endif /* __PATTERN_H */
