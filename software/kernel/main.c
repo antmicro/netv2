@@ -143,6 +143,7 @@ struct vid_channel {
     spinlock_t qlock;
     struct vb2_queue queue;
     struct list_head buf_list;
+    uint8_t streaming;
 };
 
 static const struct v4l2_dv_timings_cap hdmi2pcie_timings_cap = {
@@ -407,19 +408,20 @@ static void buffer_queue(struct vb2_buffer *vb)
 	dma_addr_t dma_buf = vb2_dma_contig_plane_dma_addr(vb, 0);
 	unsigned long flags;
 
-	litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_LENGTH_ADDR, DMA_BUFFER_SIZE);
-	litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 1);
-	litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_BASE_ADDR, 0x10000000);
+	if (!chan->streaming) {
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_LENGTH_ADDR, DMA_BUFFER_SIZE);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 1);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_BASE_ADDR, 0x03000000);
+		chan->streaming = 1;
+	}
 
 	spin_lock_irqsave(&chan->qlock, flags);
 	//list_add_tail(&hbuf->list, &priv->buf_list);
 	if (chan->dir == HDMI2PCIE_DIR_IN) {
 		litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
-	        litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
+		litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
 		wait_event_interruptible(pcie_chan->wait_rd,
 			pcie_chan->dma.writer_hw_count > 0);
-	        litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
-		litepcie_dma_writer_stop(litepcie_dev, PCIE_CHANNEL);
 	} else {
 		litepcie_dma_reader_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
 	        litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
@@ -468,6 +470,13 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 static void stop_streaming(struct vb2_queue *vq)
 {
 	struct vid_channel *chan = vb2_get_drv_priv(vq);
+	struct litepcie_device *litepcie_dev = chan->common;
+	struct litepcie_chan *pcie_chan = &litepcie_dev->chan[PCIE_CHANNEL];
+
+	//litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 0);
+	chan->streaming = 0;
+	litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
+	litepcie_dma_writer_stop(litepcie_dev, PCIE_CHANNEL);
 
 	return_all_buffers(chan, VB2_BUF_STATE_ERROR);
 }
@@ -974,8 +983,10 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         goto fail1;
     }
 
-    for (i = 0; i < litepcie_dev->channels_count; i++)
+    for (i = 0; i < litepcie_dev->channels_count; i++) {
         litepcie_dev->channels[i].common = litepcie_dev;
+	litepcie_dev->channels[i].streaming = 0;
+    }
 
     for(i = 0; i < litepcie_dev->channels_count; i++) {
         litepcie_dev->chan[i].index = i;
