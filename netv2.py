@@ -201,32 +201,29 @@ class NeTV2(SoCSDRAM):
                 self.add_constant(k + "_INTERRUPT", i)
 
 
-            dma_reader_dram_port = self.sdram.crossbar.get_port(mode="read")
+            dma_reader_dram_port = self.sdram.crossbar.get_port(
+                    mode="read",
+                    data_width = 16,
+                    clock_domain = "sys",
+                    reverse = True
+                    )
             self.submodules.dma_reader_initiator = Initiator(
                     cd = dma_reader_dram_port.cd)
 
             self.add_csr("dma_reader_initiator")
 
-            self.submodules.dma_reader = DMAReader(
-                    dram_port = dma_reader_dram_port,
-                    fifo_depth = 512,
-                    genlock_stream = None
-                    )
+            self.submodules.dma_reader = ClockDomainsRenamer(dma_reader_dram_port.cd)(
+                    DMAReader(
+                        dram_port = dma_reader_dram_port,
+                        fifo_depth = 512,
+                        genlock_stream = None
+                    ))
             self.add_csr("dma_reader")
 
             self.comb += self.dma_reader.source.connect(self.pcie_dma0.sink)
             self.comb += self.dma_reader_initiator.source.connect(self.dma_reader.sink, keep=list_signals(frame_dma_layout))
-                    #self.pcie_dma0.sink.valid.eq(self.dma_reader.source.valid),
-                    #self.pcie_dma0.sink.
-            # FIXME : Dummy counter capture, connect to HDMI In ------------------------------------
-            #pcie_dma0_counter = Signal(32)
-            #self.sync += [
-            #    self.pcie_dma0.sink.valid.eq(1),
-            #    If(self.pcie_dma0.sink.ready,
-            #        pcie_dma0_counter.eq(pcie_dma0_counter + 1)
-            #    ),
-            #    self.pcie_dma0.sink.data.eq(pcie_dma0_counter)
-            #]
+            self.comb += self.dma_reader.sink.valid.eq(self.dma_reader_initiator.source.valid)
+            self.comb += self.dma_reader_initiator.source.ready.eq(self.dma_reader.sink.ready)
 
             pcie_dma1_counter = Signal(32)
             self.sync += [
