@@ -44,7 +44,7 @@ static const unsigned char config_defaults[CONFIG_KEY_COUNT] = {
 	false, // Input0
 	true,  // Input1
 	// Output config
-	true, VIDEO_IN_DEFAULT, // Output 0
+	true, VIDEO_IN_PATTERN, // Output 0
 	true, VIDEO_IN_PATTERN, // Output 1
 	// Encoder
 	true, VIDEO_IN_DEFAULT, 85, 25, true,
