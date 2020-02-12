@@ -78,7 +78,7 @@ class NeTV2(SoCSDRAM):
     def __init__(self, platform,
         with_cpu       = True,
         with_sdram     = True,
-        with_etherbone = True,
+        with_etherbone = False,
         with_pcie      = True,
         with_hdmi_in0  = True,
         with_hdmi_out0 = True):
@@ -91,7 +91,8 @@ class NeTV2(SoCSDRAM):
             l2_size                  = 128,
             csr_data_width           = 32,
             with_uart                = with_cpu,
-            uart_name                = "crossover",
+            #uart_name                = "crossover",
+            integrated_sram_size     = 0x4000,
             integrated_rom_size      = 0x8000 if with_cpu else 0x0000,
             integrated_main_ram_size = 0x1000 if not with_sdram else 0x0000,
             ident                    = "NeTV2 LiteX SoC",
