@@ -64,6 +64,7 @@
 #define DEBUG_POLL
 //#define DEBUG_READ
 //#define DEBUG_WRITE
+#define DEBUG_FNCTS
 
 #define LITEPCIE_NAME "litepcie"
 #define LITEPCIE_MINOR_COUNT 32
@@ -75,92 +76,92 @@
 #define READ_BUF_OFF (7*PCIE_BUF_SIZE)
 
 struct litepcie_dma_chan {
-    uint32_t base;
-    uint32_t writer_interrupt;
-    uint32_t reader_interrupt;
-    dma_addr_t reader_handle[DMA_BUFFER_COUNT];
-    dma_addr_t writer_handle[DMA_BUFFER_COUNT];
-    uint32_t *reader_addr[DMA_BUFFER_COUNT];
-    uint32_t *writer_addr[DMA_BUFFER_COUNT];
-    int64_t reader_hw_count;
-    int64_t reader_hw_count_last;
-    int64_t reader_sw_count;
-    int64_t writer_hw_count;
-    int64_t writer_hw_count_last;
-    int64_t writer_sw_count;
-    uint8_t writer_enable;
-    uint8_t reader_enable;
-    uint8_t writer_lock;
-    uint8_t reader_lock;
+	uint32_t base;
+	uint32_t writer_interrupt;
+	uint32_t reader_interrupt;
+	dma_addr_t reader_handle[DMA_BUFFER_COUNT];
+	dma_addr_t writer_handle[DMA_BUFFER_COUNT];
+	uint32_t *reader_addr[DMA_BUFFER_COUNT];
+	uint32_t *writer_addr[DMA_BUFFER_COUNT];
+	int64_t reader_hw_count;
+	int64_t reader_hw_count_last;
+	int64_t reader_sw_count;
+	int64_t writer_hw_count;
+	int64_t writer_hw_count_last;
+	int64_t writer_sw_count;
+	uint8_t writer_enable;
+	uint8_t reader_enable;
+	uint8_t writer_lock;
+	uint8_t reader_lock;
 };
 
 struct litepcie_chan {
-    struct litepcie_device *litepcie_dev;
-    struct litepcie_dma_chan dma;
-    struct cdev *cdev;
-    uint32_t block_size;
-    uint32_t core_base;
-    wait_queue_head_t wait_rd; /* to wait for an ongoing read */
-    wait_queue_head_t wait_wr; /* to wait for an ongoing write */
+	struct litepcie_device *litepcie_dev;
+	struct litepcie_dma_chan dma;
+	struct cdev *cdev;
+	uint32_t block_size;
+	uint32_t core_base;
+	wait_queue_head_t wait_rd; /* to wait for an ongoing read */
+	wait_queue_head_t wait_wr; /* to wait for an ongoing write */
 
-    int index;
-    int minor;
+	int index;
+	int minor;
 };
 
 struct litepcie_device {
-    struct pci_dev  *dev;
-    resource_size_t bar0_size;
-    phys_addr_t bar0_phys_addr;
-    uint8_t *bar0_addr; /* virtual address of BAR0 */
-    struct litepcie_chan chan[DMA_CHANNEL_COUNT];
-    struct list_head list;
-    spinlock_t lock;
-    int minor_base;
-    int channels_count;
-    struct vid_channel *channels;
+	struct pci_dev  *dev;
+	resource_size_t bar0_size;
+	phys_addr_t bar0_phys_addr;
+	uint8_t *bar0_addr; /* virtual address of BAR0 */
+	struct litepcie_chan chan[DMA_CHANNEL_COUNT];
+	struct list_head list;
+	spinlock_t lock;
+	int minor_base;
+	int channels_count;
+	struct vid_channel *channels;
 };
 
 struct litepcie_chan_priv {
-    struct litepcie_chan *chan;
-    bool reader;
-    bool writer;
+	struct litepcie_chan *chan;
+	bool reader;
+	bool writer;
 };
 
 struct vid_channel {
-    uint8_t dir;
-    uint32_t sequence;
-    struct litepcie_device *common;
+	uint8_t dir;
+	uint32_t sequence;
+	struct litepcie_device *common;
 
-    struct v4l2_device v4l2_dev;
-    struct video_device vdev;
-    struct mutex lock;
+	struct v4l2_device v4l2_dev;
+	struct video_device vdev;
+	struct mutex lock;
 
-    struct v4l2_dv_timings timings;
-    struct v4l2_pix_format format;
+	struct v4l2_dv_timings timings;
+	struct v4l2_pix_format format;
 
-    unsigned int *fb_idx;
+	unsigned int *fb_idx;
 
-    spinlock_t qlock;
-    struct vb2_queue queue;
-    struct list_head buf_list;
-    uint8_t streaming;
+	spinlock_t qlock;
+	struct vb2_queue queue;
+	struct list_head buf_list;
+	uint8_t streaming;
 };
 
 static const struct v4l2_dv_timings_cap hdmi2pcie_timings_cap = {
-    .type = V4L2_DV_BT_656_1120,
-    .reserved = { 0 },
-    V4L2_INIT_BT_TIMINGS(
-        640, 1920,
-        480, 1080,
-        25000000, 148500000,
-        V4L2_DV_BT_STD_CEA861,
-        V4L2_DV_BT_CAP_PROGRESSIVE
-    )
+	.type = V4L2_DV_BT_656_1120,
+	.reserved = { 0 },
+	V4L2_INIT_BT_TIMINGS(
+		640, 1920,
+		480, 1080,
+		25000000, 148500000,
+		V4L2_DV_BT_STD_CEA861,
+		V4L2_DV_BT_CAP_PROGRESSIVE
+	)
 };
 
 struct hdmi2pcie_buffer {
-    struct vb2_v4l2_buffer vb;
-    struct list_head list;
+	struct vb2_v4l2_buffer vb;
+	struct list_head list;
 };
 
 static LIST_HEAD(litepcie_list);
@@ -172,191 +173,228 @@ static dev_t litepcie_dev_t;
 
 static inline uint32_t litepcie_readl(struct litepcie_device  *s, uint32_t addr)
 {
-    uint32_t val;
-    val = readl(s->bar0_addr + addr - CSR_BASE);
+	uint32_t val;
+	val = readl(s->bar0_addr + addr - CSR_BASE);
+
 #ifdef DEBUG_CSR
-    printk("csr_read: 0x%08x @ 0x%08x", val, addr);
+	printk("csr_read: 0x%08x @ 0x%08x", val, addr);
 #endif
-    return val;
+
+	return val;
 }
 
 static inline void litepcie_writel(struct litepcie_device *s, uint32_t addr, uint32_t val)
 {
 #ifdef DEBUG_CSR
-    printk("csr_write: 0x%08x @ 0x%08x", val, addr);
+	printk("csr_write: 0x%08x @ 0x%08x", val, addr);
 #endif
-    return writel(val, s->bar0_addr + addr - CSR_BASE);
+
+	return writel(val, s->bar0_addr + addr - CSR_BASE);
 }
 
 static void litepcie_enable_interrupt(struct litepcie_device *s, int irq_num)
 {
-    uint32_t v;
-    v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
-    v |= (1 << irq_num);
-    litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
+	uint32_t v;
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
+	v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
+	v |= (1 << irq_num);
+	litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
 static void litepcie_disable_interrupt(struct litepcie_device *s, int irq_num)
 {
-    uint32_t v;
-    v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
-    v &= ~(1 << irq_num);
-    litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
+	uint32_t v;
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
+	v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
+	v &= ~(1 << irq_num);
+	litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
 static void litepcie_dma_writer_start_addr(struct litepcie_device *s, int chan_num, dma_addr_t addr)
 {
-    struct litepcie_dma_chan *dmachan;
-    int i;
+	struct litepcie_dma_chan *dmachan;
+	int i;
 
-    dmachan = &s->chan[chan_num].dma;
-
-    /* fill dma writer descriptors */
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_FLUSH_OFFSET, 1);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_OFFSET, 0);
-    for(i = 0; i < DMA_BUFFER_COUNT; i++) {
-        litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET,
-#ifndef DMA_BUFFER_ALIGNED
-                    DMA_LAST_DISABLE |
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
 #endif
-                    (!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
-                    DMA_BUFFER_SIZE);                                  /* every n buffers */
-        litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 4,
-                    addr);
-        litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_WE_OFFSET, 1);
-    }
 
-    /* clear counters */
-    dmachan->writer_hw_count = 0;
-    dmachan->writer_hw_count_last = 0;
+	dmachan = &s->chan[chan_num].dma;
 
-    /* start dma writer */
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 1);
+	/* fill dma writer descriptors */
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_FLUSH_OFFSET, 1);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_OFFSET, 0);
+	for(i = 0; i < DMA_BUFFER_COUNT; i++) {
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET,
+#ifndef DMA_BUFFER_ALIGNED
+				DMA_LAST_DISABLE |
+#endif
+				(!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
+				DMA_BUFFER_SIZE);                                  /* every n buffers */
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 4,
+				addr);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_WE_OFFSET, 1);
+	}
+
+	/* clear counters */
+	dmachan->writer_hw_count = 0;
+	dmachan->writer_hw_count_last = 0;
+
+	/* start dma writer */
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 1);
 }
 
 static void litepcie_dma_writer_stop(struct litepcie_device *s, int chan_num)
 {
-    struct litepcie_dma_chan *dmachan;
+	struct litepcie_dma_chan *dmachan;
 
-    dmachan = &s->chan[chan_num].dma;
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
-    /* flush and stop dma writer */
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_OFFSET, 0);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_FLUSH_OFFSET, 1);
-    udelay(1000);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_FLUSH_OFFSET, 1);
+	dmachan = &s->chan[chan_num].dma;
 
-    /* clear counters */
-    dmachan->writer_hw_count = 0;
-    dmachan->writer_hw_count_last = 0;
-    dmachan->writer_sw_count = 0;
+	/* flush and stop dma writer */
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_OFFSET, 0);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_FLUSH_OFFSET, 1);
+	udelay(1000);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_FLUSH_OFFSET, 1);
+
+	/* clear counters */
+	dmachan->writer_hw_count = 0;
+	dmachan->writer_hw_count_last = 0;
+	dmachan->writer_sw_count = 0;
 }
 
 static void litepcie_dma_reader_start_addr(struct litepcie_device *s, int chan_num, dma_addr_t addr)
 {
-    struct litepcie_dma_chan *dmachan;
-    int i;
+	struct litepcie_dma_chan *dmachan;
+	int i;
 
-    dmachan = &s->chan[chan_num].dma;
-
-    /* fill dma reader descriptors */
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET , 0);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_FLUSH_OFFSET, 1);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 0);
-    for(i = 0; i < DMA_BUFFER_COUNT; i++) {
-        litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET,
-#ifndef DMA_BUFFER_ALIGNED
-                    DMA_LAST_DISABLE |
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
 #endif
-                    (!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
-                    DMA_BUFFER_SIZE);                                  /* every n buffers */
-        litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 4,
-            addr);
-        litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_WE_OFFSET, 1);
-    }
-    //litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 1);
 
-    /* clear counters */
-    dmachan->reader_hw_count = 0;
-    dmachan->reader_hw_count_last = 0;
+	dmachan = &s->chan[chan_num].dma;
 
-    /* start dma reader */
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 1);
+	/* fill dma reader descriptors */
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET , 0);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_FLUSH_OFFSET, 1);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 0);
+	for(i = 0; i < DMA_BUFFER_COUNT; i++) {
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET,
+#ifndef DMA_BUFFER_ALIGNED
+				DMA_LAST_DISABLE |
+#endif
+				(!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
+				DMA_BUFFER_SIZE);                                  /* every n buffers */
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 4,
+				addr);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_WE_OFFSET, 1);
+	}
+	//litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 1);
+
+	/* clear counters */
+	dmachan->reader_hw_count = 0;
+	dmachan->reader_hw_count_last = 0;
+
+	/* start dma reader */
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 1);
 }
 
 static void litepcie_dma_reader_stop(struct litepcie_device *s, int chan_num)
 {
-    struct litepcie_dma_chan *dmachan;
+	struct litepcie_dma_chan *dmachan;
 
-    dmachan = &s->chan[chan_num].dma;
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
-    /* flush and stop dma reader */
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 0);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_FLUSH_OFFSET, 1);
-    udelay(1000);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 0);
-    litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_FLUSH_OFFSET, 1);
+	dmachan = &s->chan[chan_num].dma;
 
-    /* clear counters */
-    dmachan->reader_hw_count = 0;
-    dmachan->reader_hw_count_last = 0;
-    dmachan->reader_sw_count = 0;
+	/* flush and stop dma reader */
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 0);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_FLUSH_OFFSET, 1);
+	udelay(1000);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 0);
+	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_FLUSH_OFFSET, 1);
+
+	/* clear counters */
+	dmachan->reader_hw_count = 0;
+	dmachan->reader_hw_count_last = 0;
+	dmachan->reader_sw_count = 0;
 }
 
 void litepcie_stop_dma(struct litepcie_device *s)
 {
-    struct litepcie_dma_chan *dmachan;
-    int i;
+	struct litepcie_dma_chan *dmachan;
+	int i;
 
-    for(i = 0; i < s->channels_count; i++) {
-        dmachan = &s->chan[i].dma;
-        litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
-        litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 0);
-    }
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
+	for(i = 0; i < s->channels_count; i++) {
+		dmachan = &s->chan[i].dma;
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 0);
+	}
 }
 
 static irqreturn_t litepcie_interrupt(int irq, void *data)
 {
-    struct litepcie_device *s = (struct litepcie_device*) data;
-    struct litepcie_chan *chan;
-    uint32_t clear_mask, irq_vector, irq_enable;
-    int i;
+	struct litepcie_device *s = (struct litepcie_device*) data;
+	struct litepcie_chan *chan;
+	uint32_t clear_mask, irq_vector, irq_enable;
+	int i;
 
-    irq_vector = litepcie_readl(s, CSR_PCIE_MSI_VECTOR_ADDR);
-    irq_enable = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
-#ifdef DEBUG_MSI
-    printk(KERN_INFO LITEPCIE_NAME " MSI: 0x%x 0x%x\n", irq_vector, irq_enable);
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
 #endif
-    irq_vector &= irq_enable;
-    clear_mask = 0;
 
-    for(i = 0; i < s->channels_count; i++) {
-        chan = &s->chan[i];
-        /* dma reader interrupt handling */
-        if(irq_vector & (1 << chan->dma.reader_interrupt)) {
-	    chan->dma.reader_hw_count ++;
+	irq_vector = litepcie_readl(s, CSR_PCIE_MSI_VECTOR_ADDR);
+	irq_enable = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
 #ifdef DEBUG_MSI
-            printk(KERN_INFO LITEPCIE_NAME " MSI DMA%d Reader buf: %lld\n", i, chan->dma.reader_hw_count);
+	printk(KERN_INFO LITEPCIE_NAME " MSI: 0x%x 0x%x\n", irq_vector, irq_enable);
 #endif
-            wake_up_interruptible(&chan->wait_wr);
-            clear_mask |= (1 << chan->dma.reader_interrupt);
-        }
-        /* dma writer interrupt handling */
-        if(irq_vector & (1 << chan->dma.writer_interrupt)) {
-	    chan->dma.writer_hw_count ++;
+	irq_vector &= irq_enable;
+	clear_mask = 0;
+
+	for(i = 0; i < s->channels_count; i++) {
+		chan = &s->chan[i];
+		/* dma reader interrupt handling */
+		if(irq_vector & (1 << chan->dma.reader_interrupt)) {
+			chan->dma.reader_hw_count ++;
 #ifdef DEBUG_MSI
-            printk(KERN_INFO LITEPCIE_NAME " MSI DMA%d Writer buf: %lld\n", i, chan->dma.writer_hw_count);
+			printk(KERN_INFO LITEPCIE_NAME " MSI DMA%d Reader buf: %lld\n", i, chan->dma.reader_hw_count);
 #endif
-            wake_up_interruptible(&chan->wait_rd);
-            clear_mask |= (1 << chan->dma.writer_interrupt);
-        }
-    }
+			wake_up_interruptible(&chan->wait_wr);
+			clear_mask |= (1 << chan->dma.reader_interrupt);
+		}
+		/* dma writer interrupt handling */
+		if(irq_vector & (1 << chan->dma.writer_interrupt)) {
+			chan->dma.writer_hw_count ++;
+#ifdef DEBUG_MSI
+			printk(KERN_INFO LITEPCIE_NAME " MSI DMA%d WWriter buf: %lld\n", i, chan->dma.writer_hw_count);
+#endif
+			wake_up_interruptible(&chan->wait_rd);
+			clear_mask |= (1 << chan->dma.writer_interrupt);
+		}
+	}
 
-    litepcie_writel(s, CSR_PCIE_MSI_CLEAR_ADDR, clear_mask);
+	litepcie_writel(s, CSR_PCIE_MSI_CLEAR_ADDR, clear_mask);
 
-    return IRQ_HANDLED;
+	return IRQ_HANDLED;
 }
 
 /* V4L2 fncts */
@@ -367,13 +405,19 @@ static inline struct hdmi2pcie_buffer *to_hdmi2pcie_buffer(struct vb2_buffer *vb
 }
 
 static int queue_setup(struct vb2_queue *vq,
-		       unsigned int *nbuffers, unsigned int *nplanes,
-		       unsigned int sizes[], struct device *alloc_devs[])
+		unsigned int *nbuffers, unsigned int *nplanes,
+		unsigned int sizes[], struct device *alloc_devs[])
 {
 	struct vid_channel *chan = vb2_get_drv_priv(vq);
 
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	if (vq->num_buffers + *nbuffers < 3)
 		*nbuffers = 3 - vq->num_buffers;
+
+	printk("%d %d %d\n", *nplanes, vq->num_buffers, *nbuffers);
 
 	if (*nplanes)
 		return sizes[0] < chan->format.sizeimage ? -EINVAL : 0;
@@ -388,9 +432,13 @@ static int buffer_prepare(struct vb2_buffer *vb)
 	struct vid_channel *chan = vb2_get_drv_priv(vb->vb2_queue);
 	unsigned long size = chan->format.sizeimage;
 
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	if (vb2_plane_size(vb, 0) < size) {
 		dev_err(&chan->common->dev->dev, "buffer too small (%lu < %lu)\n",
-			 vb2_plane_size(vb, 0), size);
+				vb2_plane_size(vb, 0), size);
 		return -EINVAL;
 	}
 
@@ -408,10 +456,15 @@ static void buffer_queue(struct vb2_buffer *vb)
 	dma_addr_t dma_buf = vb2_dma_contig_plane_dma_addr(vb, 0);
 	unsigned long flags;
 
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	if (!chan->streaming) {
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_LENGTH_ADDR, DMA_BUFFER_SIZE);
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 1);
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_BASE_ADDR, 0x03000000);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 1);
+		litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
 		chan->streaming = 1;
 	}
 
@@ -419,16 +472,18 @@ static void buffer_queue(struct vb2_buffer *vb)
 	//list_add_tail(&hbuf->list, &priv->buf_list);
 	if (chan->dir == HDMI2PCIE_DIR_IN) {
 		litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
-		litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
+		//litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
 		wait_event_interruptible(pcie_chan->wait_rd,
-			pcie_chan->dma.writer_hw_count > 0);
+				pcie_chan->dma.writer_hw_count > 0);
+		//litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
+		//litepcie_dma_writer_stop(litepcie_dev, PCIE_CHANNEL);
 	} else {
-		litepcie_dma_reader_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
-	        litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
-		wait_event_interruptible(pcie_chan->wait_wr,
-			pcie_chan->dma.reader_hw_count > 0);
-	        litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
-		litepcie_dma_reader_stop(litepcie_dev, PCIE_CHANNEL);
+		//litepcie_dma_reader_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
+		//litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
+		//wait_event_interruptible(pcie_chan->wait_wr,
+		//		pcie_chan->dma.reader_hw_count > 0);
+		//litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
+		//litepcie_dma_reader_stop(litepcie_dev, PCIE_CHANNEL);
 	}
 
 	vb->timestamp = ktime_get_ns();
@@ -441,10 +496,14 @@ static void buffer_queue(struct vb2_buffer *vb)
 }
 
 static void return_all_buffers(struct vid_channel *chan,
-			       enum vb2_buffer_state state)
+		enum vb2_buffer_state state)
 {
 	struct hdmi2pcie_buffer *buf, *node;
 	unsigned long flags;
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	spin_lock_irqsave(&chan->qlock, flags);
 	list_for_each_entry_safe(buf, node, &chan->buf_list, list) {
@@ -459,6 +518,10 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	struct vid_channel *chan = vb2_get_drv_priv(vq);
 	int ret = 0;
 
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	chan->sequence = 0;
 
 	if (ret) {
@@ -472,6 +535,10 @@ static void stop_streaming(struct vb2_queue *vq)
 	struct vid_channel *chan = vb2_get_drv_priv(vq);
 	struct litepcie_device *litepcie_dev = chan->common;
 	struct litepcie_chan *pcie_chan = &litepcie_dev->chan[PCIE_CHANNEL];
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	//litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 0);
 	chan->streaming = 0;
@@ -492,20 +559,28 @@ static struct vb2_ops hdmi2pcie_qops = {
 };
 
 static int hdmi2pcie_querycap(struct file *file, void *private,
-			     struct v4l2_capability *cap)
+		struct v4l2_capability *cap)
 {
 	struct vid_channel *chan = video_drvdata(file);
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	strlcpy(cap->driver, KBUILD_MODNAME, sizeof(cap->driver));
 	strlcpy(cap->card, "HDMI2PCIe", sizeof(cap->card));
 	snprintf(cap->bus_info, sizeof(cap->bus_info), "PCI:%s",
-		 pci_name(chan->common->dev));
+			pci_name(chan->common->dev));
 	return 0;
 }
 
 static void hdmi2pcie_fill_pix_format(struct vid_channel *chan,
-				     struct v4l2_pix_format *pix)
+		struct v4l2_pix_format *pix)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	pix->pixelformat = V4L2_PIX_FMT_UYVY;
 	pix->width = chan->timings.bt.width;
 	pix->height = chan->timings.bt.height;
@@ -523,10 +598,14 @@ static void hdmi2pcie_fill_pix_format(struct vid_channel *chan,
 }
 
 static int hdmi2pcie_try_fmt_vid(struct file *file, void *private,
-				    struct v4l2_format *f)
+		struct v4l2_format *f)
 {
 	struct vid_channel *chan = video_drvdata(file);
 	struct v4l2_pix_format *pix = &f->fmt.pix;
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	if (pix->pixelformat != V4L2_PIX_FMT_UYVY) {
 		dev_info(&chan->common->dev->dev, "%s: wrong format\n", __PRETTY_FUNCTION__);
@@ -536,10 +615,14 @@ static int hdmi2pcie_try_fmt_vid(struct file *file, void *private,
 }
 
 static int hdmi2pcie_s_fmt_vid(struct file *file, void *private,
-				  struct v4l2_format *f)
+		struct v4l2_format *f)
 {
 	struct vid_channel *chan = video_drvdata(file);
 	int ret;
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	ret = hdmi2pcie_try_fmt_vid(file, private, f);
 	if (ret)
@@ -554,17 +637,25 @@ static int hdmi2pcie_s_fmt_vid(struct file *file, void *private,
 }
 
 static int hdmi2pcie_g_fmt_vid(struct file *file, void *private,
-				  struct v4l2_format *f)
+		struct v4l2_format *f)
 {
 	struct vid_channel *chan = video_drvdata(file);
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	f->fmt.pix = chan->format;
 	return 0;
 }
 
 static int hdmi2pcie_enum_fmt_vid(struct file *file, void *private,
-				     struct v4l2_fmtdesc *f)
+		struct v4l2_fmtdesc *f)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	if (f->index > 0)
 		return -EINVAL;
 
@@ -573,15 +664,19 @@ static int hdmi2pcie_enum_fmt_vid(struct file *file, void *private,
 }
 
 static int hdmi2pcie_s_dv_timings(struct file *file, void *_fh,
-				 struct v4l2_dv_timings *timings)
+		struct v4l2_dv_timings *timings)
 {
 	struct vid_channel *chan = video_drvdata(file);
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	if (!v4l2_valid_dv_timings(timings, &hdmi2pcie_timings_cap, NULL, NULL))
 		return -EINVAL;
 
 	if (!v4l2_find_dv_timings_cap(timings, &hdmi2pcie_timings_cap,
-				      0, NULL, NULL))
+				0, NULL, NULL))
 		return -EINVAL;
 
 	if (v4l2_match_dv_timings(timings, &chan->timings, 0, false))
@@ -597,39 +692,59 @@ static int hdmi2pcie_s_dv_timings(struct file *file, void *_fh,
 }
 
 static int hdmi2pcie_g_dv_timings(struct file *file, void *_fh,
-				 struct v4l2_dv_timings *timings)
+		struct v4l2_dv_timings *timings)
 {
 	struct vid_channel *chan = video_drvdata(file);
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	*timings = chan->timings;
 	return 0;
 }
 
 static int hdmi2pcie_enum_dv_timings(struct file *file, void *_fh,
-				    struct v4l2_enum_dv_timings *timings)
+		struct v4l2_enum_dv_timings *timings)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	return v4l2_enum_dv_timings_cap(timings, &hdmi2pcie_timings_cap,
-					NULL, NULL);
+			NULL, NULL);
 }
 
 static int hdmi2pcie_query_dv_timings(struct file *file, void *_fh,
-				     struct v4l2_dv_timings *timings)
+		struct v4l2_dv_timings *timings)
 {
 	// TODO: detect current timings/signal state (out of range, disconnected, ...)
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	return 0;
 }
 
 static int hdmi2pcie_dv_timings_cap(struct file *file, void *fh,
-				   struct v4l2_dv_timings_cap *cap)
+		struct v4l2_dv_timings_cap *cap)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	*cap = hdmi2pcie_timings_cap;
 	return 0;
 }
 
 static int hdmi2pcie_enum_input(struct file *file, void *private,
-			       struct v4l2_input *i)
+		struct v4l2_input *i)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	if (i->index > 0)
 		return -EINVAL;
 
@@ -642,6 +757,10 @@ static int hdmi2pcie_enum_input(struct file *file, void *private,
 static int hdmi2pcie_s_input(struct file *file, void *private, unsigned int i)
 {
 	struct vid_channel *chan = video_drvdata(file);
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	if (i > 0)
 		return -EINVAL;
@@ -657,13 +776,21 @@ static int hdmi2pcie_s_input(struct file *file, void *private, unsigned int i)
 
 static int hdmi2pcie_g_input(struct file *file, void *private, unsigned int *i)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	*i = 0;
 	return 0;
 }
 
 static int hdmi2pcie_enum_output(struct file *file, void *private,
-			       struct v4l2_output *i)
+		struct v4l2_output *i)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	if (i->index > 0)
 		return -EINVAL;
 
@@ -676,6 +803,10 @@ static int hdmi2pcie_enum_output(struct file *file, void *private,
 static int hdmi2pcie_s_output(struct file *file, void *private, unsigned int i)
 {
 	struct vid_channel *chan = video_drvdata(file);
+
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
 
 	if (i > 0)
 		return -EINVAL;
@@ -691,6 +822,10 @@ static int hdmi2pcie_s_output(struct file *file, void *private, unsigned int i)
 
 static int hdmi2pcie_g_output(struct file *file, void *private, unsigned int *i)
 {
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	*i = 0;
 	return 0;
 }
@@ -776,6 +911,10 @@ static int hdmi2pcie_register_video_dev(struct pci_dev *pdev, struct vid_channel
 	struct vb2_queue *q = &chan->queue;
 	int ret;
 
+#ifdef DEBUG_FNCTS
+	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+#endif
+
 	chan->dir = dir;
 
 	ret = v4l2_device_register(&pdev->dev, &chan->v4l2_dev);
@@ -855,298 +994,298 @@ v4l2_unregister:
 /* from stackoverflow */
 void sfind( char *string, char *format, ... )
 {
-    va_list arglist;
+	va_list arglist;
 
-    va_start( arglist, format );
-    vsscanf( string, format, arglist );
-    va_end( arglist );
+	va_start( arglist, format );
+	vsscanf( string, format, arglist );
+	va_end( arglist );
 }
 
 struct revision
 {
-   int yy;
-   int mm;
-   int dd;
+	int yy;
+	int mm;
+	int dd;
 };
 
 int compare_revisions(struct revision d1, struct revision d2)
 {
-    if (d1.yy < d2.yy)
-       return -1;
-    else if (d1.yy > d2.yy)
-       return 1;
-    else {
-         if (d1.mm < d2.mm)
-              return -1;
-         else if (d1.mm > d2.mm)
-              return 1;
-         else if (d1.dd < d2.dd)
-              return -1;
-         else if(d1.dd > d2.dd)
-              return 1;
-         else
-              return 0;
-    }
+	if (d1.yy < d2.yy)
+		return -1;
+	else if (d1.yy > d2.yy)
+		return 1;
+	else {
+		if (d1.mm < d2.mm)
+			return -1;
+		else if (d1.mm > d2.mm)
+			return 1;
+		else if (d1.dd < d2.dd)
+			return -1;
+		else if(d1.dd > d2.dd)
+			return 1;
+		else
+			return 0;
+	}
 }
 /* from stackoverflow */
 
 static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
-    int ret=0;
-    uint8_t rev_id;
-    int i;
-    char fpga_identifier[256];
-    struct revision minimal_gateware_revision;
-    struct revision current_gateware_revision;
+	int ret=0;
+	uint8_t rev_id;
+	int i;
+	char fpga_identifier[256];
+	struct revision minimal_gateware_revision;
+	struct revision current_gateware_revision;
 
-    struct litepcie_device *litepcie_dev = NULL;
+	struct litepcie_device *litepcie_dev = NULL;
 
-    printk(KERN_INFO LITEPCIE_NAME " \e[1m[lalaalProbing device]\e[0m\n");
+	printk(KERN_INFO LITEPCIE_NAME " \e[1m[lalaalProbing device]\e[0m\n");
 
-    litepcie_dev = kzalloc(sizeof(struct litepcie_device), GFP_KERNEL);
-    if(!litepcie_dev) {
-        printk(KERN_ERR LITEPCIE_NAME " Cannot allocate memory\n");
-        ret = -ENOMEM;
-        goto fail1;
-    }
+	litepcie_dev = kzalloc(sizeof(struct litepcie_device), GFP_KERNEL);
+	if(!litepcie_dev) {
+		printk(KERN_ERR LITEPCIE_NAME " Cannot allocate memory\n");
+		ret = -ENOMEM;
+		goto fail1;
+	}
 
-    pci_set_drvdata(dev, litepcie_dev);
-    litepcie_dev->dev = dev;
-    spin_lock_init(&litepcie_dev->lock);
-    list_add_tail(&(litepcie_dev->list), &(litepcie_list));
+	pci_set_drvdata(dev, litepcie_dev);
+	litepcie_dev->dev = dev;
+	spin_lock_init(&litepcie_dev->lock);
+	list_add_tail(&(litepcie_dev->list), &(litepcie_list));
 
-    ret = pci_enable_device(dev);
-    if (ret != 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Cannot enable device\n");
-        goto fail1;
-    }
+	ret = pci_enable_device(dev);
+	if (ret != 0) {
+		printk(KERN_ERR LITEPCIE_NAME " Cannot enable device\n");
+		goto fail1;
+	}
 
-    /* check device version */
-    pci_read_config_byte(dev, PCI_REVISION_ID, &rev_id);
-    if (rev_id != 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Unsupported device version %d\n", rev_id);
-        goto fail2;
-    }
+	/* check device version */
+	pci_read_config_byte(dev, PCI_REVISION_ID, &rev_id);
+	if (rev_id != 0) {
+		printk(KERN_ERR LITEPCIE_NAME " Unsupported device version %d\n", rev_id);
+		goto fail2;
+	}
 
-    if (pci_request_regions(dev, LITEPCIE_NAME) < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Could not request regions\n");
-        goto fail2;
-    }
+	if (pci_request_regions(dev, LITEPCIE_NAME) < 0) {
+		printk(KERN_ERR LITEPCIE_NAME " Could not request regions\n");
+		goto fail2;
+	}
 
-    /* check bar0 config */
-    if (!(pci_resource_flags(dev, 0) & IORESOURCE_MEM)) {
-        printk(KERN_ERR LITEPCIE_NAME " Invalid BAR0 configuration\n");
-        goto fail3;
-    }
+	/* check bar0 config */
+	if (!(pci_resource_flags(dev, 0) & IORESOURCE_MEM)) {
+		printk(KERN_ERR LITEPCIE_NAME " Invalid BAR0 configuration\n");
+		goto fail3;
+	}
 
-    litepcie_dev->bar0_addr = pci_ioremap_bar(dev, 0);
-    litepcie_dev->bar0_size = pci_resource_len(dev, 0);
-    litepcie_dev->bar0_phys_addr = pci_resource_start(dev, 0);
-    if (!litepcie_dev->bar0_addr) {
-        printk(KERN_ERR LITEPCIE_NAME " Could not map BAR0\n");
-        goto fail3;
-    }
+	litepcie_dev->bar0_addr = pci_ioremap_bar(dev, 0);
+	litepcie_dev->bar0_size = pci_resource_len(dev, 0);
+	litepcie_dev->bar0_phys_addr = pci_resource_start(dev, 0);
+	if (!litepcie_dev->bar0_addr) {
+		printk(KERN_ERR LITEPCIE_NAME " Could not map BAR0\n");
+		goto fail3;
+	}
 
-    /* show identifier */
-    for(i=0; i < 256; i++)
-        fpga_identifier[i] = litepcie_readl(litepcie_dev, CSR_IDENTIFIER_MEM_BASE + i*4);
-    printk(KERN_INFO LITEPCIE_NAME " Version %s\n", fpga_identifier);
+	/* show identifier */
+	for(i=0; i < 256; i++)
+		fpga_identifier[i] = litepcie_readl(litepcie_dev, CSR_IDENTIFIER_MEM_BASE + i*4);
+	printk(KERN_INFO LITEPCIE_NAME " Version %s\n", fpga_identifier);
 
-    pci_set_master(dev);
-    ret = pci_set_dma_mask(dev, DMA_BIT_MASK(32));
-    if (ret) {
-        printk(KERN_ERR LITEPCIE_NAME " Failed to set DMA mask\n");
-        goto fail4;
-    };
+	pci_set_master(dev);
+	ret = pci_set_dma_mask(dev, DMA_BIT_MASK(32));
+	if (ret) {
+		printk(KERN_ERR LITEPCIE_NAME " Failed to set DMA mask\n");
+		goto fail4;
+	};
 
-    ret = pci_enable_msi(dev);
-    if (ret) {
-        printk(KERN_ERR LITEPCIE_NAME " Failed to enable MSI\n");
-        goto fail4;
-    }
+	ret = pci_enable_msi(dev);
+	if (ret) {
+		printk(KERN_ERR LITEPCIE_NAME " Failed to enable MSI\n");
+		goto fail4;
+	}
 
-    if (request_irq(dev->irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev) < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Failed to allocate IRQ %d\n", dev->irq);
-        goto fail5;
-    }
+	if (request_irq(dev->irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev) < 0) {
+		printk(KERN_ERR LITEPCIE_NAME " Failed to allocate IRQ %d\n", dev->irq);
+		goto fail5;
+	}
 
-    /* soft reset */
-    litepcie_writel(litepcie_dev, CSR_CRG_RESET_ADDR, 1);
-    udelay(1000);
+	/* soft reset */
+	litepcie_writel(litepcie_dev, CSR_CRG_RESET_ADDR, 1);
+	udelay(1000);
 
-    litepcie_dev->channels_count = DMA_CHANNELS;
+	litepcie_dev->channels_count = DMA_CHANNELS;
 
-    litepcie_dev->channels = kzalloc(sizeof(*litepcie_dev->channels) * litepcie_dev->channels_count, GFP_KERNEL);
-    if(!litepcie_dev->channels) {
-        dev_err(&dev->dev, "Cannot allocate memory\n");
-        ret = -ENOMEM;
-        goto fail1;
-    }
+	litepcie_dev->channels = kzalloc(sizeof(*litepcie_dev->channels) * litepcie_dev->channels_count, GFP_KERNEL);
+	if(!litepcie_dev->channels) {
+		dev_err(&dev->dev, "Cannot allocate memory\n");
+		ret = -ENOMEM;
+		goto fail1;
+	}
 
-    for (i = 0; i < litepcie_dev->channels_count; i++) {
-        litepcie_dev->channels[i].common = litepcie_dev;
-	litepcie_dev->channels[i].streaming = 0;
-    }
+	for (i = 0; i < litepcie_dev->channels_count; i++) {
+		litepcie_dev->channels[i].common = litepcie_dev;
+		litepcie_dev->channels[i].streaming = 0;
+	}
 
-    for(i = 0; i < litepcie_dev->channels_count; i++) {
-        litepcie_dev->chan[i].index = i;
-        litepcie_dev->chan[i].block_size = DMA_BUFFER_SIZE;
-        litepcie_dev->chan[i].minor = litepcie_dev->minor_base + i;
-        litepcie_dev->chan[i].litepcie_dev = litepcie_dev;
-        litepcie_dev->chan[i].dma.writer_lock = 0;
-        litepcie_dev->chan[i].dma.reader_lock = 0;
-        init_waitqueue_head(&litepcie_dev->chan[i].wait_rd);
-        init_waitqueue_head(&litepcie_dev->chan[i].wait_wr);
-        switch(i) {
-            case 1: {
-                litepcie_dev->chan[i].dma.base = CSR_PCIE_DMA1_BASE;
-                litepcie_dev->chan[i].dma.writer_interrupt = PCIE_DMA1_WRITER_INTERRUPT;
-                litepcie_dev->chan[i].dma.reader_interrupt = PCIE_DMA1_READER_INTERRUPT;
-            }
-            break;
-            default:
-            {
-                litepcie_dev->chan[i].dma.base = CSR_PCIE_DMA0_BASE;
-                litepcie_dev->chan[i].dma.writer_interrupt = PCIE_DMA0_WRITER_INTERRUPT;
-                litepcie_dev->chan[i].dma.reader_interrupt = PCIE_DMA0_READER_INTERRUPT;
-            }
-            break;
-        }
-    }
+	for(i = 0; i < litepcie_dev->channels_count; i++) {
+		litepcie_dev->chan[i].index = i;
+		litepcie_dev->chan[i].block_size = DMA_BUFFER_SIZE;
+		litepcie_dev->chan[i].minor = litepcie_dev->minor_base + i;
+		litepcie_dev->chan[i].litepcie_dev = litepcie_dev;
+		litepcie_dev->chan[i].dma.writer_lock = 0;
+		litepcie_dev->chan[i].dma.reader_lock = 0;
+		init_waitqueue_head(&litepcie_dev->chan[i].wait_rd);
+		init_waitqueue_head(&litepcie_dev->chan[i].wait_wr);
+		switch(i) {
+			case 1: {
+					litepcie_dev->chan[i].dma.base = CSR_PCIE_DMA1_BASE;
+					litepcie_dev->chan[i].dma.writer_interrupt = PCIE_DMA1_WRITER_INTERRUPT;
+					litepcie_dev->chan[i].dma.reader_interrupt = PCIE_DMA1_READER_INTERRUPT;
+				}
+				break;
+			default:
+				{
+					litepcie_dev->chan[i].dma.base = CSR_PCIE_DMA0_BASE;
+					litepcie_dev->chan[i].dma.writer_interrupt = PCIE_DMA0_WRITER_INTERRUPT;
+					litepcie_dev->chan[i].dma.reader_interrupt = PCIE_DMA0_READER_INTERRUPT;
+				}
+				break;
+		}
+	}
 
-    /* check minimal gateware revision */
-    sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
-        &minimal_gateware_revision.yy,
-        &minimal_gateware_revision.mm,
-        &minimal_gateware_revision.dd);
-    for(i=0; i < 256; i++) {
-        if (fpga_identifier[i] == '-') {
-            i -= 5;
-            break;
-        }
-    }
-    sfind(fpga_identifier + i, "%d-%d-%d",
-        &current_gateware_revision.yy,
-        &current_gateware_revision.mm,
-        &current_gateware_revision.dd);
+	/* check minimal gateware revision */
+	sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
+			&minimal_gateware_revision.yy,
+			&minimal_gateware_revision.mm,
+			&minimal_gateware_revision.dd);
+	for(i=0; i < 256; i++) {
+		if (fpga_identifier[i] == '-') {
+			i -= 5;
+			break;
+		}
+	}
+	sfind(fpga_identifier + i, "%d-%d-%d",
+			&current_gateware_revision.yy,
+			&current_gateware_revision.mm,
+			&current_gateware_revision.dd);
 
-    if (compare_revisions(minimal_gateware_revision, current_gateware_revision) > 0) {
-        printk(KERN_INFO LITEPCIE_NAME " \e[1mHW needs update to gateware revision %04d-%02d-%02d\e[0m\n",
-            minimal_gateware_revision.yy,
-            minimal_gateware_revision.mm,
-            minimal_gateware_revision.dd);
-    }
+	if (compare_revisions(minimal_gateware_revision, current_gateware_revision) > 0) {
+		printk(KERN_INFO LITEPCIE_NAME " \e[1mHW needs update to gateware revision %04d-%02d-%02d\e[0m\n",
+				minimal_gateware_revision.yy,
+				minimal_gateware_revision.mm,
+				minimal_gateware_revision.dd);
+	}
 
-    ret = hdmi2pcie_register_video_dev(dev, &litepcie_dev->channels[0], HDMI2PCIE_DIR_IN);
-    ret += hdmi2pcie_register_video_dev(dev, &litepcie_dev->channels[1], HDMI2PCIE_DIR_OUT);
-    if (ret) {
-         dev_err(&dev->dev, "Failed to register V4L2 device");
-         goto fail5;
-    }
+	ret = hdmi2pcie_register_video_dev(dev, &litepcie_dev->channels[0], HDMI2PCIE_DIR_IN);
+	ret += hdmi2pcie_register_video_dev(dev, &litepcie_dev->channels[1], HDMI2PCIE_DIR_OUT);
+	if (ret) {
+		dev_err(&dev->dev, "Failed to register V4L2 device");
+		goto fail5;
+	}
 
-    return 0;
+	return 0;
 
 fail5:
-    pci_disable_msi(dev);
+	pci_disable_msi(dev);
 fail4:
-    pci_iounmap(dev, litepcie_dev->bar0_addr);
+	pci_iounmap(dev, litepcie_dev->bar0_addr);
 fail3:
-    pci_release_regions(dev);
+	pci_release_regions(dev);
 fail2:
-    pci_disable_device(dev);
+	pci_disable_device(dev);
 fail1:
-    if(litepcie_dev){
-        list_del(&litepcie_dev->list);
-        kfree(litepcie_dev);
-    }
-    return ret;
+	if(litepcie_dev){
+		list_del(&litepcie_dev->list);
+		kfree(litepcie_dev);
+	}
+	return ret;
 }
 
 static void litepcie_pci_remove(struct pci_dev *dev)
 {
-    struct litepcie_device *litepcie_dev;
-    int i;
+	struct litepcie_device *litepcie_dev;
+	int i;
 
-    litepcie_dev = pci_get_drvdata(dev);
+	litepcie_dev = pci_get_drvdata(dev);
 
-    printk(KERN_INFO LITEPCIE_NAME " \e[1m[Removing device]\e[0m\n");
+	printk(KERN_INFO LITEPCIE_NAME " \e[1m[Removing device]\e[0m\n");
 
-    if(litepcie_dev){
-        litepcie_stop_dma(litepcie_dev);
-        free_irq(dev->irq, litepcie_dev);
-    }
+	if(litepcie_dev){
+		litepcie_stop_dma(litepcie_dev);
+		free_irq(dev->irq, litepcie_dev);
+	}
 
-    /* disable all interrupts */
-    litepcie_writel(litepcie_dev, CSR_PCIE_MSI_ENABLE_ADDR, 0);
+	/* disable all interrupts */
+	litepcie_writel(litepcie_dev, CSR_PCIE_MSI_ENABLE_ADDR, 0);
 
-    pci_disable_msi(dev);
-    if(litepcie_dev)
-        pci_iounmap(dev, litepcie_dev->bar0_addr);
-    pci_disable_device(dev);
-    pci_release_regions(dev);
-    for (i=0; i < litepcie_dev->channels_count; i++) {
-        video_unregister_device(&litepcie_dev->channels[i].vdev);
-        v4l2_device_unregister(&litepcie_dev->channels[i].v4l2_dev);
-    }
-    if(litepcie_dev){
-        kfree(litepcie_dev);
-    }
+	pci_disable_msi(dev);
+	if(litepcie_dev)
+		pci_iounmap(dev, litepcie_dev->bar0_addr);
+	pci_disable_device(dev);
+	pci_release_regions(dev);
+	for (i=0; i < litepcie_dev->channels_count; i++) {
+		video_unregister_device(&litepcie_dev->channels[i].vdev);
+		v4l2_device_unregister(&litepcie_dev->channels[i].v4l2_dev);
+	}
+	if(litepcie_dev){
+		kfree(litepcie_dev);
+	}
 }
 
 static const struct pci_device_id litepcie_pci_ids[] = {
-  { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID ), },
-  { 0, }
+	{ PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID ), },
+	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, litepcie_pci_ids);
 
 static struct pci_driver litepcie_pci_driver = {
-  .name = LITEPCIE_NAME,
-  .id_table = litepcie_pci_ids,
-  .probe = litepcie_pci_probe,
-  .remove = litepcie_pci_remove,
+	.name = LITEPCIE_NAME,
+	.id_table = litepcie_pci_ids,
+	.probe = litepcie_pci_probe,
+	.remove = litepcie_pci_remove,
 };
 
 
 static int __init litepcie_module_init(void)
 {
-    int ret;
+	int ret;
 
-    litepcie_class = class_create(THIS_MODULE, LITEPCIE_NAME);
-    if(!litepcie_class) {
-        ret = -EEXIST;
-        printk(KERN_ERR LITEPCIE_NAME " Failed to create class\n");
-        goto fail_create_class;
-    }
+	litepcie_class = class_create(THIS_MODULE, LITEPCIE_NAME);
+	if(!litepcie_class) {
+		ret = -EEXIST;
+		printk(KERN_ERR LITEPCIE_NAME " Failed to create class\n");
+		goto fail_create_class;
+	}
 
-    ret = alloc_chrdev_region(&litepcie_dev_t, 0, LITEPCIE_MINOR_COUNT, LITEPCIE_NAME);
-    if(ret < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Could not allocate char device\n");
-        goto fail_alloc_chrdev_region;
-    }
-    litepcie_major = MAJOR(litepcie_dev_t);
-    litepcie_minor_idx = MINOR(litepcie_dev_t);
+	ret = alloc_chrdev_region(&litepcie_dev_t, 0, LITEPCIE_MINOR_COUNT, LITEPCIE_NAME);
+	if(ret < 0) {
+		printk(KERN_ERR LITEPCIE_NAME " Could not allocate char device\n");
+		goto fail_alloc_chrdev_region;
+	}
+	litepcie_major = MAJOR(litepcie_dev_t);
+	litepcie_minor_idx = MINOR(litepcie_dev_t);
 
-    ret = pci_register_driver(&litepcie_pci_driver);
-    if (ret < 0) {
-        printk(KERN_ERR LITEPCIE_NAME LITEPCIE_NAME " Error while registering PCI driver\n");
-        goto fail_register;
-    }
+	ret = pci_register_driver(&litepcie_pci_driver);
+	if (ret < 0) {
+		printk(KERN_ERR LITEPCIE_NAME LITEPCIE_NAME " Error while registering PCI driver\n");
+		goto fail_register;
+	}
 
-    return 0;
+	return 0;
 
 fail_register:
-    unregister_chrdev_region(litepcie_dev_t, LITEPCIE_MINOR_COUNT);
+	unregister_chrdev_region(litepcie_dev_t, LITEPCIE_MINOR_COUNT);
 fail_alloc_chrdev_region:
-    class_destroy(litepcie_class);
+	class_destroy(litepcie_class);
 fail_create_class:
-    return ret;
+	return ret;
 }
 
 static void __exit litepcie_module_exit(void)
 {
-    pci_unregister_driver(&litepcie_pci_driver);
-    unregister_chrdev_region(litepcie_dev_t, LITEPCIE_MINOR_COUNT);
-    class_destroy(litepcie_class);
+	pci_unregister_driver(&litepcie_pci_driver);
+	unregister_chrdev_region(litepcie_dev_t, LITEPCIE_MINOR_COUNT);
+	class_destroy(litepcie_class);
 }
 
 
