@@ -1,0 +1,11 @@
+build
+software/kernel/csr.h
+software/kernel/mem.h
+software/kernel/soc.h
+test/csr.csv
+*.swp
+*.d
+*.o
+*.bin
+*.elf
+*.tar.gz
