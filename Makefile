@@ -1,27 +1,38 @@
 IP_ADDR ?= 10.0.0.2
+LOGIN ?= antmicro
+HOST := $(LOGIN)@$(IP_ADDR)
 SERIAL_PORT ?= /dev/ttyUSB1
 
 default: module/build
 
-all: build module/build load
+### GENERAL TARGETS ###
+all: build load
 
-build: gateware/build firmware/build
+build: gateware/build firmware/build module/build host/reload
 
-load: gateware/load firmware/load
+load: host/reload gateware/load firmware/load
 
-software.tar.gz: $(wildcard software/kernel/*)
-	tar czfv $@ software
+target: firmware/load
 
-module/copy: software.tar.gz
-	scp $< antmicro@$(IP_ADDR):/home/antmicro
+clean: firmware/clean gateware/clean module/clean
+	rm -rf data data.yuv
 
-module/extract: module/copy
-	ssh antmicro@$(IP_ADDR) "tar xzfv software.tar.gz"
 
-module/build: module/extract
-	ssh antmicro@$(IP_ADDR) "cd software/kernel; make; sudo cp litepcie.ko /lib/modules/4.19.0-6-amd64"
+### GATEWARE ###
+build/gateware/top.bit: netv2.py
+	./netv2.py --build
 
-firmware/firmware.bin:
+gateware/build: build/gateware/top.bit
+
+gateware/load: build/gateware/top.bit
+	./netv2.py --load
+
+gateware/clean:
+	rm -rf build test/csr.csv
+
+
+### FIRMWARE ###
+firmware/firmware.bin: $(wildcard firmware/*) build/gateware/top.bit
 	make -C firmware
 
 firmware/build: firmware/firmware.bin
@@ -29,14 +40,42 @@ firmware/build: firmware/firmware.bin
 firmware/load: firmware/firmware.bin
 	lxterm --speed 115200 --kernel $< --serial-boot $(SERIAL_PORT)
 
-gateware/build: netv2.py
-	./netv2.py --build
+firmware/clean:
+	make -C firmware clean
 
-gateware/load: gateware/build
-	./netv2.py --load
+
+### KERNEL MODULE ###
+software.tar.gz: $(wildcard software/kernel/*)
+	tar czf $@ software
+
+module/copy: software.tar.gz
+	scp $< $(HOST):/home/$(LOGIN)
+
+module/extract: module/copy
+	ssh $(HOST) "tar --overwrite -xzf software.tar.gz"
+
+module/build: module/extract
+	ssh $(HOST) "cd software/kernel; make; sudo cp litepcie.ko /lib/modules/\`uname -r\`"
+
+module/clean:
+	rm -f software.tar.gz
+	ssh $(HOST) "sudo rm /lib/modules/\`uname -r\`/litepcie.ko"
+	ssh $(HOST) "rm -rf software software.tar.gz"
+
+
+### HOST COMMANDS ###
+host/reload:
+	ssh $(HOST) "sudo modprobe -r litepcie"
+	ssh $(HOST) "echo 1 | sudo tee /sys/bus/pci/devices/0000\:02\:00.0/remove"
+	ssh $(HOST) "echo 1 | sudo tee /sys/bus/pci/rescan"
 
 host/gst:
-	ssh antmicro@$(IP_ADDR) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 v4l2src device=/dev/video0 ! videoconvert ! fpsdisplaysink video-sink=\"ximagesink\" sync=false"
+	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 v4l2src device=/dev/video0 ! videoconvert ! fpsdisplaysink video-sink=\"ximagesink\" sync=false"
 
-clean:
-	git clean -xfd
+host/frames:
+	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 v4l2src device=/dev/video0 ! videoconvert ! filesink location=data.yuv \
+							 & sleep 1s; killall -9 gst-launch-1.0"
+	scp $(HOST):/home/$(LOGIN)/data.yuv .
+	mkdir -p data
+	convert -size 1280x720 -sampling-factor 4:2:2 -depth 8 data.yuv -colorspace RGB data/data.png
+	feh $$(ls -vd data/*.png)
