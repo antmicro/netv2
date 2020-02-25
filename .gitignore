@@ -1,4 +1,5 @@
 build
+data
 software/kernel/csr.h
 software/kernel/mem.h
 software/kernel/soc.h
@@ -9,3 +10,4 @@ test/csr.csv
 *.bin
 *.elf
 *.tar.gz
+*.yuv
