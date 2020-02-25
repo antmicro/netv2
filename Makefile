@@ -33,7 +33,7 @@ gateware/clean:
 
 ### FIRMWARE ###
 firmware/firmware.bin: $(wildcard firmware/*) build/gateware/top.bit
-	make -C firmware
+	(cd firmware && make)
 
 firmware/build: firmware/firmware.bin
 
@@ -41,7 +41,7 @@ firmware/load: firmware/firmware.bin
 	lxterm --speed 115200 --kernel $< --serial-boot $(SERIAL_PORT)
 
 firmware/clean:
-	make -C firmware clean
+	(cd firmware && make clean)
 
 
 ### KERNEL MODULE ###
