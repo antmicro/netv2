@@ -1153,6 +1153,14 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		}
 	}
 
+	/* enable hdmi rx0 dma */
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_FRAME_SIZE_ADDR, 1280 * 720 * 2);
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, 0x03000000);
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR, 2);
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_EV_PENDING_ADDR,
+			litepcie_readl(litepcie_dev, CSR_HDMI_IN0_DMA_EV_PENDING_ADDR));
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_EV_ENABLE_ADDR, 0x3);
+
 	/* check minimal gateware revision */
 	sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
 			&minimal_gateware_revision.yy,
