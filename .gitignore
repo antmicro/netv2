@@ -1,5 +1,6 @@
 build
 data
+tags
 software/kernel/csr.h
 software/kernel/mem.h
 software/kernel/soc.h
