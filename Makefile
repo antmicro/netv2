@@ -3,10 +3,10 @@ LOGIN ?= antmicro
 HOST := $(LOGIN)@$(IP_ADDR)
 SERIAL_PORT ?= /dev/ttyUSB1
 
-default: module/build
+default: all
 
 ### GENERAL TARGETS ###
-all: build load
+all: build gateware/load host/reload
 
 build: gateware/build firmware/build module/build host/reload
 
