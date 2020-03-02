@@ -461,17 +461,32 @@ static void buffer_queue(struct vb2_buffer *vb)
 #endif
 
 	if (!chan->streaming) {
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_LENGTH_ADDR, DMA_BUFFER_SIZE);
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_BASE_ADDR, 0x03000000);
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 1);
 		litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
+
+#ifdef DMA_LOOP
+		//Prepare LiteDRAMDMAReader
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_BASE_ADDR, 0x03000000);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_LENGTH_ADDR, DMA_BUFFER_SIZE);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_LOOP_ADDR, 1);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_START_ADDR, 1);
+#endif
+
 		chan->streaming = 1;
 	}
 
 	spin_lock_irqsave(&chan->qlock, flags);
 	//list_add_tail(&hbuf->list, &priv->buf_list);
 	if (chan->dir == HDMI2PCIE_DIR_IN) {
+
 		litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
+
+#ifndef DMA_LOOP
+		//Prepare LiteDRAMDMAReader
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_BASE_ADDR, 0x03000000);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_LENGTH_ADDR, DMA_BUFFER_SIZE);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_LOOP_ADDR, 0);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_START_ADDR, 1);
+#endif
 		//litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
 		wait_event_interruptible(pcie_chan->wait_rd,
 				pcie_chan->dma.writer_hw_count > 0);
@@ -485,6 +500,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 		//litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
 		//litepcie_dma_reader_stop(litepcie_dev, PCIE_CHANNEL);
 	}
+
 
 	vb->timestamp = ktime_get_ns();
 	vbuf->sequence = chan->sequence++;
