@@ -25,6 +25,7 @@ from litex.soc.cores.spi_flash import S7SPIFlash
 
 from litedram.modules import K4B2G1646F
 from litedram.phy import s7ddrphy
+from litedram.frontend.dma import LiteDRAMDMAReader
 
 from liteeth.phy.rmii import LiteEthPHYRMII
 from liteeth.core.mac import LiteEthMAC
@@ -201,23 +202,14 @@ class NeTV2(SoCSDRAM):
                 self.comb += self.pcie_msi.irqs[i].eq(v)
                 self.add_constant(k + "_INTERRUPT", i)
 
-
             dma_reader_dram_port = self.sdram.crossbar.get_port(
                     mode="read",
                     data_width = 64,
                     clock_domain = "sys",
                     reverse = True
                     )
-            self.submodules.dma_reader_initiator = Initiator(
-                    cd = dma_reader_dram_port.cd)
-
-            self.add_csr("dma_reader_initiator")
-
-            self.submodules.dma_reader = DMAReader(
-                        dram_port = dma_reader_dram_port,
-                        fifo_depth = 512,
-                        genlock_stream = None
-                    )
+            self.submodules.dma_reader = LiteDRAMDMAReader(dma_reader_dram_port)
+            self.dma_reader.add_csr()
             self.add_csr("dma_reader")
 
             video_data_endian_swap = Signal(64)
@@ -228,10 +220,6 @@ class NeTV2(SoCSDRAM):
             self.comb += self.dma_reader.source.ready.eq(self.pcie_dma0.sink.ready)
             self.comb += self.pcie_dma0.sink.valid.eq(self.dma_reader.source.valid)
             self.comb += self.pcie_dma0.sink.data.eq(video_data_endian_swap)
-
-            self.comb += self.dma_reader_initiator.source.connect(self.dma_reader.sink, keep=list_signals(frame_dma_layout))
-            self.comb += self.dma_reader.sink.valid.eq(self.dma_reader_initiator.source.valid)
-            self.comb += self.dma_reader_initiator.source.ready.eq(self.dma_reader.sink.ready)
 
             pcie_dma1_counter = Signal(32)
             self.sync += [
