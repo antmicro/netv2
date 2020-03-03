@@ -108,12 +108,21 @@ struct litepcie_chan {
 	int minor;
 };
 
+struct litepcie_hdmi_rx {
+	int lock_status;
+	u64 lock_timestamp;
+	u64 service_timestamp;
+
+	int data_dly[3];
+}
+
 struct litepcie_device {
 	struct pci_dev  *dev;
 	resource_size_t bar0_size;
 	phys_addr_t bar0_phys_addr;
 	uint8_t *bar0_addr; /* virtual address of BAR0 */
 	struct litepcie_chan chan[DMA_CHANNEL_COUNT];
+    struct litepcie_hdmi_rx rx;
 	struct list_head list;
 	spinlock_t lock;
 	int minor_base;
@@ -216,6 +225,159 @@ static void litepcie_disable_interrupt(struct litepcie_device *s, int irq_num)
 	v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
 	v &= ~(1 << irq_num);
 	litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
+}
+
+#define CLK_FREQ 100000000
+
+static int litepcie_hdmi_rx_mmcm_locked_filtered(struct litepcie_device *s)
+{
+	if(litepcie_readl(s, CSR_HDMI_IN0_CLOCKING_LOCKED_ADDR)) {
+		switch(s->rx.lock_status) {
+			case 0:
+				s->rx.lock_timestamp = ktime_get_ns();
+				lock_status = 1;
+				break;
+			case 1:
+				if((ktime_get_ns() + CLK_FREQ/4) > s->rx.lock_timestamp)
+					lock_status = 2;
+				break;
+			case 2:
+				return 1;
+		}
+	}
+}
+
+#define CAP_DLY_CTL_OFF		0
+#define CAP_PHASE_OFF		4
+#define CAP_PHASE_RES_OFF	8
+
+#define DELAY_RST			0x01
+#define DELAY_MASTER_INC	0x02
+#define DELAY_MASTER_DEC	0x04
+#define DELAY_SLAVE_INC		0x08
+#define DELAY_SLAVE_DEC		0x10
+
+#define DELAY_TOO_LATE		1
+#define DELAY_TOO_EARLY		2
+
+static void litepcie_hdmi_rx_adjust_phase(struct litepcie_device *s)
+{
+	u32 data_base_addr[] = {
+		CSR_HDMI_IN0_DATA0_CAP_DLY_CTL_ADDR,
+		CSR_HDMI_IN0_DATA1_CAP_DLY_CTL_ADDR,
+		CSR_HDMI_IN0_DATA2_CAP_DLY_CTL_ADDR,
+	}
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		switch(litepcie_readl(s, data_base_addr + CAP_PHASE_OFF)) {
+			case DELAY_TOO_LATE:
+				litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_MASTER_DEC | DELAY_SLAVE_DEC);
+				s->rx.data_dly[i]--;
+				litepcie_writel(s, data_base_addr + CAP_PHASE_RES_OFF, 1);
+				break;
+			case DELAY_TOO_EARLY:
+				litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_MASTER_INC | DELAY_SLAVE_INC);
+				s->rx.data_dly[i]++;
+				litepcie_writel(s, data_base_addr + CAP_PHASE_RES_OFF, 1);
+				break;
+		}
+	}
+}
+
+static int litepcie_hdmi_rx_init_phase(struct litepcie_device *s)
+{
+	int data_dly[3];
+	int i, j, k;
+
+	for (i = 0; i < 100; i++) {
+		for (j = 0; j < 3; j++)
+			data_dly[j] = s.rx.data_dly[j];
+
+		for (k = 0; k < 1000; k++)
+			litepcie_hdmi_rx_adjust_phase(s)
+
+		for (j = 0; j < 3; j++)
+			if(abs(data_dly[j] - s.rx.data_dly[j]) >= 4)
+				break;
+
+		if (j == 3)
+			return 1;
+	}
+	return 0;
+}
+
+static void litepcie_hdmi_rx_service(struct litepcie_device *s)
+{
+	if(litepcie_hdmi_rx_mmcm_locked_filtered(s)) {
+		if((ktime_get_ns() + CLK_FREQ/2) > s->rx.service_timestamp) {
+			s->rx.service_timestamp = ktime_get_ns();
+			litepcie_hdmi_rx_adjust_phase(s);
+		}
+	} else {
+		litepcie_hdmi_rx_phase_startup(s);
+	}
+}
+
+static void litepcie_hdmi_rx_calibrate_delays(struct litepcie_device *s)
+{
+	u32 data_base_addr[] = {
+		CSR_HDMI_IN0_DATA0_CAP_DLY_CTL_ADDR,
+		CSR_HDMI_IN0_DATA1_CAP_DLY_CTL_ADDR,
+		CSR_HDMI_IN0_DATA2_CAP_DLY_CTL_ADDR,
+	}
+	int i, j, delay;
+
+	for (i = 0; i < 3; i++)
+		litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_RST);
+
+	for (i = 0; i < 3; i++)
+		litepcie_writel(s, data_base_addr + CAP_PHASE_RES_OFF, 1);
+		
+	for (i = 0; i < 3; i++)
+		s->rx.data_dly[i] = 0;
+
+	delay = 10000000/(4*freq*78);
+	for (j = 0; j < delay; j++)
+		for (i = 0; i < 3; i++)
+			litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_SLAVE_INC);
+}
+
+static int litepcie_hdmi_rx_phase_startup(struct litepcie_device *s)
+{
+	int attempts;
+	while(1) {
+		attempts++;
+		litepcie_hdmi_rx_calibrate_delays(s);
+		if(litepcie_hdmi_rx_init_phase(s))
+			return 1;
+		else if (attempts > 3)
+			return 0;
+	}
+}
+
+static void litepcie_hdmi_rx_mmcm_write(struct litepcie_device *s, int adr, int data)
+{
+	litepcie_writel(s, CSR_HDMI_IN0_CLOCKING_MMCM_ADR_ADDR, adr);
+	litepcie_writel(s, CSR_HDMI_IN0_CLOCKING_MMCM_DAT_W_ADDR, data);
+	litepcie_writel(s, CSR_HDMI_IN0_CLOCKING_MMCM_WRITE_ADDR, 1);
+	while(!litepcie_readl(s, CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_ADDR));
+}
+
+int hdmi_rx_mmcm_settings [3][5] = {
+	{0x1000 | (10<<6) | 10, 0x1000 | (10<<6) | 10, 0x1000 |  (8<<6) |  8, 0x1000 |  (2<<6) |  2, 0},
+	{0x1000 |  (5<<6) | 5, 0x1000 |  (5<<6) | 5, 0x1000 |  (4<<6) | 4, 0x1000 |  (1<<6) | 1, 0},
+	{0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 2, 0x1000 |  (0<<6) | 0, (1<<6)},
+};
+
+int hdmi_rx_mmcm_regs [5] = {0x14, 0x08, 0x0a, 0x0c, 0x0d};
+
+static void litepcie_hdmi_rx_mmcm_init(struct litepcie_device *s)
+{
+	int i;
+	/* 1280p60 settings */
+	for (i = 0; i < 5; i++)
+		litepcie_hdmi_rx_mmcm_write(s, hdmi_rx_mmcm_regs[i], hdmi_rx_mmcm_settings[1][i]);
 }
 
 static void litepcie_dma_writer_start_addr(struct litepcie_device *s, int chan_num, dma_addr_t addr)
@@ -1174,8 +1336,14 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, 0x03000000);
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR, 2);
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_EV_PENDING_ADDR,
-			litepcie_readl(litepcie_dev, CSR_HDMI_IN0_DMA_EV_PENDING_ADDR));
+        litepcie_readl(litepcie_dev, CSR_HDMI_IN0_DMA_EV_PENDING_ADDR));
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_EV_ENABLE_ADDR, 0x3);
+
+    /* reset hdmi rx0 mmcm */
+    litepcie_writel(litepcie_dev, CSR_HDMI_IN0_CLOCKING_MMCM_RESET_ADDR, 1)
+    litepcie_writel(litepcie_dev, CSR_HDMI_IN0_CLOCKING_MMCM_RESET_ADDR, 0)
+
+	litepcie_hdmi_rx_mmcm_init(litepcie_dev);
 
 	/* check minimal gateware revision */
 	sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
