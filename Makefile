@@ -72,6 +72,9 @@ host/reload:
 host/gst:
 	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 v4l2src device=/dev/video0 ! videoconvert ! fpsdisplaysink video-sink=\"ximagesink\" sync=false"
 
+host/stop:
+	ssh $(HOST) "killall -q gst-launch-1.0"
+
 host/frames:
 	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 v4l2src device=/dev/video0 ! videoconvert ! filesink location=data.yuv \
 							 & sleep 1s; killall -9 gst-launch-1.0"
