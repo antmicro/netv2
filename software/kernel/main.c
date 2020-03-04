@@ -60,11 +60,11 @@
 #define PCIE_CHANNEL 0
 
 //#define DEBUG_CSR
-#define DEBUG_MSI
+//#define DEBUG_MSI
 #define DEBUG_POLL
 //#define DEBUG_READ
 //#define DEBUG_WRITE
-#define DEBUG_FNCTS
+//#define DEBUG_FNCTS
 
 #define LITEPCIE_NAME "litepcie"
 #define LITEPCIE_MINOR_COUNT 32
@@ -110,11 +110,12 @@ struct litepcie_chan {
 
 struct litepcie_hdmi_rx {
 	int lock_status;
+    int locked;
 	u64 lock_timestamp;
 	u64 service_timestamp;
 
 	int data_dly[3];
-}
+};
 
 struct litepcie_device {
 	struct pci_dev  *dev;
@@ -235,11 +236,11 @@ static int litepcie_hdmi_rx_mmcm_locked_filtered(struct litepcie_device *s)
 		switch(s->rx.lock_status) {
 			case 0:
 				s->rx.lock_timestamp = ktime_get_ns();
-				lock_status = 1;
+				s->rx.lock_status = 1;
 				break;
 			case 1:
-				if((ktime_get_ns() + CLK_FREQ/4) > s->rx.lock_timestamp)
-					lock_status = 2;
+				if((s->rx.lock_timestamp + CLK_FREQ/4) < ktime_get_ns())
+					s->rx.lock_status = 2;
 				break;
 			case 2:
 				return 1;
@@ -266,20 +267,20 @@ static void litepcie_hdmi_rx_adjust_phase(struct litepcie_device *s)
 		CSR_HDMI_IN0_DATA0_CAP_DLY_CTL_ADDR,
 		CSR_HDMI_IN0_DATA1_CAP_DLY_CTL_ADDR,
 		CSR_HDMI_IN0_DATA2_CAP_DLY_CTL_ADDR,
-	}
+	};
 	int i;
 
 	for (i = 0; i < 3; i++) {
-		switch(litepcie_readl(s, data_base_addr + CAP_PHASE_OFF)) {
+		switch(litepcie_readl(s, data_base_addr[i] + CAP_PHASE_OFF)) {
 			case DELAY_TOO_LATE:
-				litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_MASTER_DEC | DELAY_SLAVE_DEC);
+				litepcie_writel(s, data_base_addr[i] + CAP_DLY_CTL_OFF, DELAY_MASTER_DEC | DELAY_SLAVE_DEC);
 				s->rx.data_dly[i]--;
-				litepcie_writel(s, data_base_addr + CAP_PHASE_RES_OFF, 1);
+				litepcie_writel(s, data_base_addr[i] + CAP_PHASE_RES_OFF, 1);
 				break;
 			case DELAY_TOO_EARLY:
-				litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_MASTER_INC | DELAY_SLAVE_INC);
+				litepcie_writel(s, data_base_addr[i] + CAP_DLY_CTL_OFF, DELAY_MASTER_INC | DELAY_SLAVE_INC);
 				s->rx.data_dly[i]++;
-				litepcie_writel(s, data_base_addr + CAP_PHASE_RES_OFF, 1);
+				litepcie_writel(s, data_base_addr[i] + CAP_PHASE_RES_OFF, 1);
 				break;
 		}
 	}
@@ -292,13 +293,13 @@ static int litepcie_hdmi_rx_init_phase(struct litepcie_device *s)
 
 	for (i = 0; i < 100; i++) {
 		for (j = 0; j < 3; j++)
-			data_dly[j] = s.rx.data_dly[j];
+			data_dly[j] = s->rx.data_dly[j];
 
 		for (k = 0; k < 1000; k++)
-			litepcie_hdmi_rx_adjust_phase(s)
+			litepcie_hdmi_rx_adjust_phase(s);
 
 		for (j = 0; j < 3; j++)
-			if(abs(data_dly[j] - s.rx.data_dly[j]) >= 4)
+			if(abs(data_dly[j] - s->rx.data_dly[j]) >= 4)
 				break;
 
 		if (j == 3)
@@ -307,32 +308,21 @@ static int litepcie_hdmi_rx_init_phase(struct litepcie_device *s)
 	return 0;
 }
 
-static void litepcie_hdmi_rx_service(struct litepcie_device *s)
-{
-	if(litepcie_hdmi_rx_mmcm_locked_filtered(s)) {
-		if((ktime_get_ns() + CLK_FREQ/2) > s->rx.service_timestamp) {
-			s->rx.service_timestamp = ktime_get_ns();
-			litepcie_hdmi_rx_adjust_phase(s);
-		}
-	} else {
-		litepcie_hdmi_rx_phase_startup(s);
-	}
-}
-
 static void litepcie_hdmi_rx_calibrate_delays(struct litepcie_device *s)
 {
 	u32 data_base_addr[] = {
 		CSR_HDMI_IN0_DATA0_CAP_DLY_CTL_ADDR,
 		CSR_HDMI_IN0_DATA1_CAP_DLY_CTL_ADDR,
 		CSR_HDMI_IN0_DATA2_CAP_DLY_CTL_ADDR,
-	}
+	};
 	int i, j, delay;
+    int freq = 7425;
 
 	for (i = 0; i < 3; i++)
-		litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_RST);
+		litepcie_writel(s, data_base_addr[i] + CAP_DLY_CTL_OFF, DELAY_RST);
 
 	for (i = 0; i < 3; i++)
-		litepcie_writel(s, data_base_addr + CAP_PHASE_RES_OFF, 1);
+		litepcie_writel(s, data_base_addr[i] + CAP_PHASE_RES_OFF, 1);
 		
 	for (i = 0; i < 3; i++)
 		s->rx.data_dly[i] = 0;
@@ -340,7 +330,7 @@ static void litepcie_hdmi_rx_calibrate_delays(struct litepcie_device *s)
 	delay = 10000000/(4*freq*78);
 	for (j = 0; j < delay; j++)
 		for (i = 0; i < 3; i++)
-			litepcie_writel(s, data_base_addr + CAP_DLY_CTL_OFF, DELAY_SLAVE_INC);
+			litepcie_writel(s, data_base_addr[i] + CAP_DLY_CTL_OFF, DELAY_SLAVE_INC);
 }
 
 static int litepcie_hdmi_rx_phase_startup(struct litepcie_device *s)
@@ -349,10 +339,38 @@ static int litepcie_hdmi_rx_phase_startup(struct litepcie_device *s)
 	while(1) {
 		attempts++;
 		litepcie_hdmi_rx_calibrate_delays(s);
-		if(litepcie_hdmi_rx_init_phase(s))
+		if(litepcie_hdmi_rx_init_phase(s)) {
+			printk(KERN_ERR LITEPCIE_NAME " phase init OK\n");
 			return 1;
-		else if (attempts > 3)
+		} else if (attempts > 3) {
+			printk(KERN_ERR LITEPCIE_NAME " phase init failed, giving up\n");
+			litepcie_hdmi_rx_calibrate_delays(s);
 			return 0;
+		} else {
+			printk(KERN_ERR LITEPCIE_NAME " phase init failed\n");
+		}
+	}
+}
+
+static void litepcie_hdmi_rx_service(struct litepcie_device *s)
+{
+    int ret;
+    if(s->rx.locked) {
+		if(litepcie_hdmi_rx_mmcm_locked_filtered(s)) {
+			if((s->rx.service_timestamp + CLK_FREQ/2) < ktime_get_ns()) {
+				s->rx.service_timestamp = ktime_get_ns();
+				litepcie_hdmi_rx_adjust_phase(s);
+			}
+		} else {
+			printk(KERN_ERR LITEPCIE_NAME " lost PLL lock\n");
+			s->rx.locked = 0;
+		}
+    } else {
+		if(litepcie_hdmi_rx_mmcm_locked_filtered(s)) {
+			printk(KERN_ERR LITEPCIE_NAME " PLL locked\n");
+			ret = litepcie_hdmi_rx_phase_startup(s);
+			s->rx.locked = 1;
+		}
 	}
 }
 
@@ -365,8 +383,11 @@ static void litepcie_hdmi_rx_mmcm_write(struct litepcie_device *s, int adr, int 
 }
 
 int hdmi_rx_mmcm_settings [3][5] = {
+    /* 30 to 60 MHz */
 	{0x1000 | (10<<6) | 10, 0x1000 | (10<<6) | 10, 0x1000 |  (8<<6) |  8, 0x1000 |  (2<<6) |  2, 0},
+    /* 60 to 120 MHz */
 	{0x1000 |  (5<<6) | 5, 0x1000 |  (5<<6) | 5, 0x1000 |  (4<<6) | 4, 0x1000 |  (1<<6) | 1, 0},
+    /* 120 to 240 MHz */
 	{0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 2, 0x1000 |  (0<<6) | 0, (1<<6)},
 };
 
@@ -625,6 +646,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 	if (!chan->streaming) {
 		litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
 
+
 #ifdef DMA_LOOP
 		//Prepare LiteDRAMDMAReader
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_BASE_ADDR, 0x03000000);
@@ -642,6 +664,22 @@ static void buffer_queue(struct vb2_buffer *vb)
 
 		litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
 
+#define SLOT_PENDING    0x02
+#define SLOT_LOADED     0x01
+
+#if 1
+        if (litepcie_readl(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR) == SLOT_PENDING){
+            printk(KERN_ERR LITEPCIE_NAME " SLOT0\n");
+            litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, 0x03000000);
+            litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR, SLOT_LOADED);
+        }
+        if (litepcie_readl(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT1_STATUS_ADDR) == SLOT_PENDING){
+            printk(KERN_ERR LITEPCIE_NAME " SLOT1\n");
+            litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT1_ADDRESS_ADDR, 0x04000000);
+            litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT1_STATUS_ADDR, SLOT_LOADED);
+        }
+#endif
+
 #ifndef DMA_LOOP
 		//Prepare LiteDRAMDMAReader
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_BASE_ADDR, 0x03000000);
@@ -649,9 +687,10 @@ static void buffer_queue(struct vb2_buffer *vb)
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_LOOP_ADDR, 0);
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_START_ADDR, 1);
 #endif
+
+        litepcie_hdmi_rx_service(litepcie_dev);
+
 		//litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
-		wait_event_interruptible(pcie_chan->wait_rd,
-				pcie_chan->dma.writer_hw_count > 0);
 		//litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
 		//litepcie_dma_writer_stop(litepcie_dev, PCIE_CHANNEL);
 	} else {
@@ -663,6 +702,10 @@ static void buffer_queue(struct vb2_buffer *vb)
 		//litepcie_dma_reader_stop(litepcie_dev, PCIE_CHANNEL);
 	}
 
+	spin_unlock_irqrestore(&chan->qlock, flags);
+
+    wait_event_interruptible(pcie_chan->wait_rd,
+            pcie_chan->dma.writer_hw_count > 0);
 
 	vb->timestamp = ktime_get_ns();
 	vbuf->sequence = chan->sequence++;
@@ -670,7 +713,6 @@ static void buffer_queue(struct vb2_buffer *vb)
 
 	vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
 
-	spin_unlock_irqrestore(&chan->qlock, flags);
 }
 
 static void return_all_buffers(struct vid_channel *chan,
@@ -1331,19 +1373,21 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		}
 	}
 
+    /* reset hdmi rx0 mmcm */
+    litepcie_writel(litepcie_dev, CSR_HDMI_IN0_CLOCKING_MMCM_RESET_ADDR, 1);
+    litepcie_writel(litepcie_dev, CSR_HDMI_IN0_CLOCKING_MMCM_RESET_ADDR, 0);
+
+	litepcie_hdmi_rx_mmcm_init(litepcie_dev);
+
 	/* enable hdmi rx0 dma */
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_FRAME_SIZE_ADDR, 1280 * 720 * 2);
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, 0x03000000);
-	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR, 2);
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT1_ADDRESS_ADDR, 0x04000000);
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR, SLOT_LOADED);
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT1_STATUS_ADDR, SLOT_LOADED);
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_EV_PENDING_ADDR,
         litepcie_readl(litepcie_dev, CSR_HDMI_IN0_DMA_EV_PENDING_ADDR));
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_EV_ENABLE_ADDR, 0x3);
-
-    /* reset hdmi rx0 mmcm */
-    litepcie_writel(litepcie_dev, CSR_HDMI_IN0_CLOCKING_MMCM_RESET_ADDR, 1)
-    litepcie_writel(litepcie_dev, CSR_HDMI_IN0_CLOCKING_MMCM_RESET_ADDR, 0)
-
-	litepcie_hdmi_rx_mmcm_init(litepcie_dev);
 
 	/* check minimal gateware revision */
 	sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
