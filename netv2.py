@@ -253,6 +253,9 @@ class NeTV2(SoCSDRAM):
 
             self.add_interrupt("hdmi_in0")
 
+            self.comb += self.pcie_msi.irqs[4].eq(self.hdmi_in0.ev.irq)
+            self.add_constant("HDMI_IN0_DMA_INTERRUPT", 4)
+
         # HDMI Out 0 -------------------------------------------------------------------------------
         if with_hdmi_out0:
             self.submodules.hdmi_out0 = VideoOut(
