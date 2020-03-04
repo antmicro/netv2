@@ -656,16 +656,16 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 	}
 
 	if (irq_vector & (1 << HDMI_IN0_DMA_INTERRUPT)) {
-		printk(KERN_INFO LITEPCIE_NAME " HDMI_IN0_DMA_IRQ\n");
+		//printk(KERN_INFO LITEPCIE_NAME " HDMI_IN0_DMA_IRQ\n");
 
 #if 1
         if (litepcie_readl(s, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR) == SLOT_PENDING){
-            printk(KERN_ERR LITEPCIE_NAME " SLOT0\n");
+            //printk(KERN_ERR LITEPCIE_NAME " SLOT0\n");
             litepcie_writel(s, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, 0x03000000);
             litepcie_writel(s, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR, SLOT_LOADED);
         }
         if (litepcie_readl(s, CSR_HDMI_IN0_DMA_SLOT1_STATUS_ADDR) == SLOT_PENDING){
-            printk(KERN_ERR LITEPCIE_NAME " SLOT1\n");
+            //printk(KERN_ERR LITEPCIE_NAME " SLOT1\n");
             litepcie_writel(s, CSR_HDMI_IN0_DMA_SLOT1_ADDRESS_ADDR, 0x04000000);
             litepcie_writel(s, CSR_HDMI_IN0_DMA_SLOT1_STATUS_ADDR, SLOT_LOADED);
         }
@@ -1475,7 +1475,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	litepcie_hdmi_rx_mmcm_init(litepcie_dev);
 
 	/* enable hdmi rx0 dma */
-	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_FRAME_SIZE_ADDR, 1280 * 720 * 2);
+	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_FRAME_SIZE_ADDR, DMA_BUFFER_SIZE);
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, 0x03000000);
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT1_ADDRESS_ADDR, 0x04000000);
 	litepcie_writel(litepcie_dev, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR, SLOT_LOADED);
