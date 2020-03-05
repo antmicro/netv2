@@ -55,7 +55,7 @@ module/extract: module/copy
 	ssh $(HOST) "tar --overwrite -xzf software.tar.gz"
 
 module/build: module/extract
-	ssh $(HOST) "cd software/kernel; make; sudo cp litepcie.ko /lib/modules/\`uname -r\`"
+	ssh $(HOST) -t "cd software/kernel; make; sudo cp litepcie.ko /lib/modules/\`uname -r\`"
 
 module/clean:
 	rm -f software.tar.gz
