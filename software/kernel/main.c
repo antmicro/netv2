@@ -61,12 +61,7 @@
 
 //#define DEBUG_CSR
 //#define DEBUG_MSI
-#define DEBUG_POLL
-//#define DEBUG_READ
-//#define DEBUG_WRITE
 //#define DEBUG_FNCTS
-//#define DEBUG_PHASE
-//#define DEBUG_RES
 #define DEBUG_HDMI_STATUS
 
 #define LITEPCIE_NAME "litepcie"
@@ -115,14 +110,21 @@ struct litepcie_dma_chan {
 	uint8_t reader_lock;
 };
 
+struct litepcie_dma_desc {
+    dma_addr_t dma_buf;
+	struct list_head list;
+};
+
 struct litepcie_chan {
 	struct litepcie_device *litepcie_dev;
 	struct litepcie_dma_chan dma;
 	struct cdev *cdev;
 	uint32_t block_size;
 	uint32_t core_base;
-	wait_queue_head_t wait_rd; /* to wait for an ongoing read */
-	wait_queue_head_t wait_wr; /* to wait for an ongoing write */
+
+	struct list_head rd_desc;
+	struct list_head wr_desc;
+	spinlock_t desc_lock;
 
 	int index;
 	int minor;
@@ -136,7 +138,6 @@ struct litepcie_hdmi_rx {
 
     int curr_read_buf;
     int next_read_buf;
-	spinlock_t buf_lock;
 
 	int data_dly[3];
 };
@@ -442,8 +443,6 @@ static void litepcie_hdmi_rx_service(struct litepcie_device *s)
 		printk(KERN_ERR LITEPCIE_NAME " HDMI IN FIFO overflow\n");
 		litepcie_writel(s, CSR_HDMI_IN0_FRAME_OVERFLOW_ADDR, 1);
 	}
-#ifdef DEBUG_RES
-#endif
 }
 
 static void litepcie_hdmi_rx_mmcm_write(struct litepcie_device *s, int adr, int data)
@@ -608,17 +607,70 @@ void litepcie_stop_dma(struct litepcie_device *s)
 	}
 }
 
+static void handle_buffer(struct vid_channel *chan)
+{
+	struct vb2_v4l2_buffer *vbuf;
+    struct hdmi2pcie_buffer *buf = 0;
+    struct vb2_buffer *vb;
+	unsigned long flags;
+
+	spin_lock_irqsave(&chan->qlock, flags);
+    if(!list_empty(&chan->buf_list)) {
+        buf = list_first_entry(&chan->buf_list, struct hdmi2pcie_buffer, list);
+        list_del_init(&buf->list);
+    }
+	spin_unlock_irqrestore(&chan->qlock, flags);
+
+    if (buf) {
+        vbuf = &buf->vb;
+        vb = &vbuf->vb2_buf;
+
+        vb->timestamp = ktime_get_ns();
+        vbuf->sequence = chan->sequence++;
+        vbuf->field = V4L2_FIELD_NONE;
+
+        vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
+    }
+}
+
+static void start_read(struct litepcie_chan *chan)
+{
+}
+
+static void start_write(struct litepcie_chan *chan)
+{
+	struct litepcie_device *litepcie_dev = chan->litepcie_dev;
+    struct litepcie_dma_desc *desc;
+    unsigned int next_buf;
+
+    if (!list_empty(&chan->wr_desc)) {
+        desc = list_first_entry(&chan->wr_desc, struct litepcie_dma_desc, list);
+        next_buf = (litepcie_dev->rx.next_read_buf*DMA_BUFFER_SIZE)+DMA_BUFFER_BASE;
+        litepcie_dev->rx.curr_read_buf = litepcie_dev->rx.next_read_buf;
+        litepcie_dev->rx.next_read_buf = (litepcie_dev->rx.curr_read_buf + 1) % 3;
+
+        litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, desc->dma_buf);
+
+        litepcie_writel(litepcie_dev, CSR_DMA_READER_BASE_ADDR, next_buf);
+        litepcie_writel(litepcie_dev, CSR_DMA_READER_START_ADDR, 1);
+
+        list_del_init(&desc->list);
+        kfree(desc);
+    }
+}
+
 static irqreturn_t litepcie_interrupt(int irq, void *data)
 {
 	struct litepcie_device *s = (struct litepcie_device*) data;
+    struct vid_channel *vid_chan;
 	struct litepcie_chan *chan;
 	uint32_t clear_mask, irq_vector, irq_enable;
-    unsigned int next_buf;
     unsigned long flags;
+    unsigned int next_buf;
 	int i;
 
 #ifdef DEBUG_FNCTS
-	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
+	//printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
 #endif
 
 	irq_vector = litepcie_readl(s, CSR_PCIE_MSI_VECTOR_ADDR);
@@ -627,34 +679,42 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 	printk(KERN_INFO LITEPCIE_NAME " MSI: 0x%x 0x%x\n", irq_vector, irq_enable);
 #endif
 	irq_vector &= irq_enable;
+
+    if(!irq_vector)
+        return IRQ_NONE;
+
 	clear_mask = 0;
 
 	for(i = 0; i < s->channels_count; i++) {
 		chan = &s->chan[i];
 		/* dma reader interrupt handling */
 		if(irq_vector & (1 << chan->dma.reader_interrupt)) {
+            vid_chan = &s->channels[1];
 			chan->dma.reader_hw_count ++;
 #ifdef DEBUG_MSI
 			printk(KERN_INFO LITEPCIE_NAME " MSI DMA%d Reader buf: %lld\n", i, chan->dma.reader_hw_count);
 #endif
-			wake_up_interruptible(&chan->wait_wr);
 			clear_mask |= (1 << chan->dma.reader_interrupt);
+            handle_buffer(vid_chan);
+            start_read(chan);
 		}
 		/* dma writer interrupt handling */
 		if(irq_vector & (1 << chan->dma.writer_interrupt)) {
+            vid_chan = &s->channels[0];
 			chan->dma.writer_hw_count ++;
 #ifdef DEBUG_MSI
-			printk(KERN_INFO LITEPCIE_NAME " MSI DMA%d WWriter buf: %lld\n", i, chan->dma.writer_hw_count);
+			printk(KERN_INFO LITEPCIE_NAME " MSI DMA%d Writer buf: %lld\n", i, chan->dma.writer_hw_count);
 #endif
-			wake_up_interruptible(&chan->wait_rd);
 			clear_mask |= (1 << chan->dma.writer_interrupt);
+            handle_buffer(vid_chan);
+            spin_lock_irqsave(&chan->desc_lock, flags);
+            start_write(chan);
+            spin_unlock_irqrestore(&chan->desc_lock, flags);
 		}
 	}
 
 	if (irq_vector & (1 << HDMI_IN0_DMA_INTERRUPT)) {
-        spin_lock_irqsave(&s->rx.buf_lock, flags);
         next_buf = (((s->rx.curr_read_buf+2) % 3)*DMA_BUFFER_SIZE)+DMA_BUFFER_BASE;
-        spin_unlock_irqrestore(&s->rx.buf_lock, flags);
 
         if (litepcie_readl(s, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR) == SLOT_PENDING){
             litepcie_writel(s, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, next_buf);
@@ -676,7 +736,7 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 
 /* V4L2 fncts */
 
-static inline struct hdmi2pcie_buffer *to_hdmi2pcie_buffer(struct vb2_buffer *vb2)
+static inline struct hdmi2pcie_buffer *to_hdmi2pcie_buffer(struct vb2_v4l2_buffer *vb2)
 {
 	return container_of(vb2, struct hdmi2pcie_buffer, vb);
 }
@@ -728,9 +788,9 @@ static void buffer_queue(struct vb2_buffer *vb)
 	struct vid_channel *chan = vb2_get_drv_priv(vb->vb2_queue);
 	struct litepcie_device *litepcie_dev = chan->common;
 	struct litepcie_chan *pcie_chan = &litepcie_dev->chan[PCIE_CHANNEL];
-	//struct hdmi2pcie_buffer *hbuf = to_hdmi2pcie_buffer(vb);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
-	dma_addr_t dma_buf = vb2_dma_contig_plane_dma_addr(vb, 0);
+	struct hdmi2pcie_buffer *hbuf = to_hdmi2pcie_buffer(vbuf);
+    struct litepcie_dma_desc *desc = kzalloc(sizeof(struct litepcie_dma_desc), GFP_KERNEL);
     unsigned int next_buf;
 	unsigned long flags;
 
@@ -738,51 +798,31 @@ static void buffer_queue(struct vb2_buffer *vb)
 	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
 #endif
 
-	if (!chan->streaming) {
-		litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_LENGTH_ADDR, DMA_BUFFER_SIZE);
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_LOOP_ADDR, 0);
-		chan->streaming = 1;
-	}
+    if (!desc) {
+        printk(KERN_ERR LITEPCIE_NAME " %s, failed to allocate DMA descriptor\n", __func__);
+        return;
+    }
 
+	desc->dma_buf = vb2_dma_contig_plane_dma_addr(vb, 0);
+
+    //Add buffer to list
 	spin_lock_irqsave(&chan->qlock, flags);
-	//list_add_tail(&hbuf->list, &priv->buf_list);
+	list_add_tail(&hbuf->list, &chan->buf_list);
 	spin_unlock_irqrestore(&chan->qlock, flags);
+
+    //Add DMA descriptor to list
+    spin_lock_irqsave(&pcie_chan->desc_lock, flags);
 	if (chan->dir == HDMI2PCIE_DIR_IN) {
-        spin_lock_irqsave(&litepcie_dev->rx.buf_lock, flags);
-        next_buf = (litepcie_dev->rx.next_read_buf*DMA_BUFFER_SIZE)+DMA_BUFFER_BASE;
-        litepcie_dev->rx.curr_read_buf = litepcie_dev->rx.next_read_buf;
-        litepcie_dev->rx.next_read_buf = (litepcie_dev->rx.curr_read_buf + 1) % 3;
-        spin_unlock_irqrestore(&litepcie_dev->rx.buf_lock, flags);
-
-		litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
-
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_BASE_ADDR, next_buf);
-		litepcie_writel(litepcie_dev, CSR_DMA_READER_START_ADDR, 1);
+        list_add_tail(&desc->list, &pcie_chan->wr_desc);
+        if(chan->streaming)
+            if(list_first_entry(&pcie_chan->wr_desc, struct litepcie_dma_desc, list) == desc)
+                start_write(pcie_chan);
 	} else {
-		//litepcie_dma_reader_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
-		//litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
-		//litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
-		//litepcie_dma_reader_stop(litepcie_dev, PCIE_CHANNEL);
+        list_add_tail(&desc->list, &pcie_chan->rd_desc);
 	}
-
+    spin_unlock_irqrestore(&pcie_chan->desc_lock, flags);
 
 	litepcie_hdmi_rx_service(litepcie_dev);
-
-	if (chan->dir == HDMI2PCIE_DIR_IN) {
-		wait_event_interruptible(pcie_chan->wait_rd,
-				pcie_chan->dma.writer_hw_count > 0);
-	} else {
-		//wait_event_interruptible(pcie_chan->wait_wr,
-		//		pcie_chan->dma.reader_hw_count > 0);
-	}
-
-	vb->timestamp = ktime_get_ns();
-	vbuf->sequence = chan->sequence++;
-	vbuf->field = V4L2_FIELD_NONE;
-
-	vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
-
 }
 
 static void return_all_buffers(struct vid_channel *chan,
@@ -806,11 +846,24 @@ static void return_all_buffers(struct vid_channel *chan,
 static int start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct vid_channel *chan = vb2_get_drv_priv(vq);
+	struct litepcie_device *litepcie_dev = chan->common;
+	struct litepcie_chan *pcie_chan = &litepcie_dev->chan[PCIE_CHANNEL];
+    unsigned long flags;
 	int ret = 0;
 
 #ifdef DEBUG_FNCTS
 	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
 #endif
+
+	if (!chan->streaming) {
+		litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_LENGTH_ADDR, DMA_BUFFER_SIZE);
+		litepcie_writel(litepcie_dev, CSR_DMA_READER_LOOP_ADDR, 0);
+		chan->streaming = 1;
+        spin_lock_irqsave(&pcie_chan->desc_lock, flags);
+        start_write(pcie_chan);
+        spin_unlock_irqrestore(&pcie_chan->desc_lock, flags);
+	}
 
 	chan->sequence = 0;
 
@@ -1342,7 +1395,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	pci_set_drvdata(dev, litepcie_dev);
 	litepcie_dev->dev = dev;
 	spin_lock_init(&litepcie_dev->lock);
-	spin_lock_init(&litepcie_dev->rx.buf_lock);
 	list_add_tail(&(litepcie_dev->list), &(litepcie_list));
 
 	ret = pci_enable_device(dev);
@@ -1425,8 +1477,9 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		litepcie_dev->chan[i].litepcie_dev = litepcie_dev;
 		litepcie_dev->chan[i].dma.writer_lock = 0;
 		litepcie_dev->chan[i].dma.reader_lock = 0;
-		init_waitqueue_head(&litepcie_dev->chan[i].wait_rd);
-		init_waitqueue_head(&litepcie_dev->chan[i].wait_wr);
+        INIT_LIST_HEAD(&litepcie_dev->chan[i].rd_desc);
+        INIT_LIST_HEAD(&litepcie_dev->chan[i].wr_desc);
+        spin_lock_init(&litepcie_dev->chan[i].desc_lock);
 		switch(i) {
 			case 1: {
 					litepcie_dev->chan[i].dma.base = CSR_PCIE_DMA1_BASE;
