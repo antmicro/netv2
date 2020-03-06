@@ -25,7 +25,7 @@ from litex.soc.cores.spi_flash import S7SPIFlash
 
 from litedram.modules import K4B2G1646F
 from litedram.phy import s7ddrphy
-from litedram.frontend.dma import LiteDRAMDMAReader
+from litedram.frontend.dma import LiteDRAMDMAReader, LiteDRAMDMAWriter
 
 from liteeth.phy.rmii import LiteEthPHYRMII
 from liteeth.core.mac import LiteEthMAC
@@ -221,14 +221,29 @@ class NeTV2(SoCSDRAM):
             self.comb += self.pcie_dma0.sink.valid.eq(self.dma_reader.source.valid)
             self.comb += self.pcie_dma0.sink.data.eq(video_data_endian_swap)
 
-            pcie_dma1_counter = Signal(32)
-            self.sync += [
-                self.pcie_dma1.sink.valid.eq(1),
-                If(self.pcie_dma1.sink.ready,
-                    pcie_dma1_counter.eq(pcie_dma1_counter + 2)
-                ),
-                self.pcie_dma1.sink.data.eq(pcie_dma1_counter)
+            dma_writer_dram_port = self.sdram.crossbar.get_port(
+                mode="write",
+                data_width=64,
+                clock_domain="sys",
+                reverse=True
+            )            
+            self.submodules.dma_writer = LiteDRAMDMAWriter(dma_writer_dram_port)
+            self.dma_writer.add_csr()
+            self.add_csr("dma_writer")
+            self.comb += [
+               self.pcie_dma1.source.ready.eq(self.dma_writer.sink.ready),
+               self.dma_writer.sink.valid.eq(self.pcie_dma1.source.valid),
+               self.dma_writer.sink.data.eq(self.pcie_dma1.source.valid),
             ]
+
+            #pcie_dma1_counter = Signal(32)
+            #self.sync += [
+            #    self.pcie_dma1.sink.valid.eq(1),
+            #    If(self.pcie_dma1.sink.ready,
+            #        pcie_dma1_counter.eq(pcie_dma1_counter + 2)
+            #    ),
+            #    self.pcie_dma1.sink.data.eq(pcie_dma1_counter)
+            #]
 
         # HDMI In 0 --------------------------------------------------------------------------------
         if with_hdmi_in0:

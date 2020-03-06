@@ -757,13 +757,20 @@ static void buffer_queue(struct vb2_buffer *vb)
 
 		litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
 
+		printk("addr = 0x%x\n", next_buf);
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_BASE_ADDR, next_buf);
 		litepcie_writel(litepcie_dev, CSR_DMA_READER_START_ADDR, 1);
 	} else {
-		//litepcie_dma_reader_start_addr(litepcie_dev, PCIE_CHANNEL, dma_buf);
+		printk("SENDING FRAME TO TARGET\n");
+		litepcie_dma_reader_start_addr(litepcie_dev, 1, dma_buf);
+		litepcie_writel(litepcie_dev, CSR_DMA_WRITER_BASE_ADDR, 0x01000000);
+		litepcie_writel(litepcie_dev, CSR_DMA_WRITER_LENGTH_ADDR, DMA_BUFFER_SIZE);
+		litepcie_writel(litepcie_dev, CSR_DMA_WRITER_LOOP_ADDR, 0);
+		litepcie_writel(litepcie_dev, CSR_DMA_WRITER_START_ADDR, 1);
+
 		//litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
 		//litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
-		//litepcie_dma_reader_stop(litepcie_dev, PCIE_CHANNEL);
+		litepcie_dma_reader_stop(litepcie_dev, 1);
 	}
 
 
