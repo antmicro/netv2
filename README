@@ -17,6 +17,24 @@
 3. Build the design and load it:
   ./netv2.py --build --load
 
+[> HowTo use Linux V4L2 driver
+Existing makefile targets assume that you have a separate testing Linux PC that has NeTV2 board plugged in and that it can be reached via SSH from your development PC.
+
+Currently only HDMI source that was succesfully captured is Numato Opsis HDMI output but by using Opsis as a HDMI repeater other sources can be captured (1280x720p60 output from a PC works fine).
+Additionally only RX0 HDMI input is supported by the current design.
+
+0. For correct operation of the HDMI input you must use code from this branch https://github.com/antmicro/litevideo/tree/iserdese-clocking (it seems that mainline code generates designs with ISEREDESE2 CLKB inputs driven from logic).
+1. Build design via gateware/build target
+2. Load the bitstream onto the board (for best results stop the PC in the bootloader, load the bitstream, and continue booting).
+3. Linux should show it in lspci output as:
+  Memory controller: Xilinx Corporation Device 7021
+4. Set IP_ADDR and LOGIN enviromental variables to match your testing machine (for best results setup SSH so you don't have to provide password every time you connect - setup SSH keys etc.).
+5. After that you can build, reload driver, and start gstreamer using the following commands (for host/reload target to work correctly you must have the litepcie kernel module loaded and ssh $(HOST) "echo 1 | sudo tee /sys/bus/pci/devices/.../remove" command from the makefile must point to the correct PCIe device):
+  make module/build
+  make host/reload
+  make host/gst
+6. If stream started by make host/gst hangs then you can remotely kill gstreamer using make host/stop and then restart host/gst target.
+
 [> Status
 ---------
 # FIXME
