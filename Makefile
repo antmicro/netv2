@@ -2,6 +2,8 @@ IP_ADDR ?= 10.0.0.2
 LOGIN ?= antmicro
 HOST := $(LOGIN)@$(IP_ADDR)
 SERIAL_PORT ?= /dev/ttyUSB1
+VIDEO_IN ?= /dev/video0
+VIDEO_OUT ?= /dev/video1
 
 default: all
 
@@ -69,11 +71,14 @@ host/reload:
 	ssh $(HOST) "echo 1 | sudo tee /sys/bus/pci/devices/0000\:02\:00.0/remove"
 	ssh $(HOST) "echo 1 | sudo tee /sys/bus/pci/rescan"
 
+host/rmmod:
+	ssh $(HOST) "sudo rmmod -f litepcie"
+
 host/gst:
-	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 v4l2src device=/dev/video0 ! videoconvert ! fpsdisplaysink video-sink=\"ximagesink\" sync=false"
+	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 v4l2src device=$(VIDEO_IN) ! videoconvert ! fpsdisplaysink video-sink=\"ximagesink\" sync=false"
 
 host/out:
-	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 videotestsrc ! video/x-raw,width=1280,height=720 ! v4l2sink device=/dev/video1 sync=false"
+	ssh $(HOST) "DISPLAY=:0 gst-launch-1.0 -v --gst-debug=3 videotestsrc ! video/x-raw,width=1280,height=720 ! v4l2sink device=$(VIDEO_OUT) sync=false"
 
 host/stop:
 	ssh $(HOST) "killall -q gst-launch-1.0"
