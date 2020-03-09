@@ -230,10 +230,17 @@ class NeTV2(SoCSDRAM):
             self.submodules.dma_writer = LiteDRAMDMAWriter(dma_writer_dram_port)
             self.dma_writer.add_csr()
             self.add_csr("dma_writer")
+
+            writer_data_endian_swap = Signal(64)
+            for b in range(0, 8):
+                src_byte= 7 - b
+                self.comb += writer_data_endian_swap[b*8:(b+1)*8].eq(self.pcie_dma1.source.data[src_byte*8:(src_byte + 1)*8])
+
             self.comb += [
                self.pcie_dma1.source.ready.eq(self.dma_writer.sink.ready),
                self.dma_writer.sink.valid.eq(self.pcie_dma1.source.valid),
-               self.dma_writer.sink.data.eq(self.pcie_dma1.source.data),
+               #self.dma_writer.sink.data.eq(self.pcie_dma1.source.data),
+               self.dma_writer.sink.data.eq(writer_data_endian_swap),
             ]
 
             #pcie_dma1_counter = Signal(32)
