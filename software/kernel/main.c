@@ -648,6 +648,9 @@ static void start_write(struct litepcie_chan *chan)
         next_buf = (litepcie_dev->rx.next_read_buf*DMA_BUFFER_SIZE)+DMA_BUFFER_BASE;
         litepcie_dev->rx.curr_read_buf = litepcie_dev->rx.next_read_buf;
         litepcie_dev->rx.next_read_buf = (litepcie_dev->rx.curr_read_buf + 1) % 3;
+#ifdef DEBUG_BUFFERS
+        printk(KERN_INFO LITEPCIE_NAME " pcie buffer: 0x%08x\n", next_buf);
+#endif 
 
         litepcie_dma_writer_start_addr(litepcie_dev, PCIE_CHANNEL, desc->dma_buf);
 
@@ -715,6 +718,9 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 
 	if (irq_vector & (1 << HDMI_IN0_DMA_INTERRUPT)) {
         next_buf = (((s->rx.curr_read_buf+2) % 3)*DMA_BUFFER_SIZE)+DMA_BUFFER_BASE;
+#ifdef DEBUG_BUFFERS
+        printk(KERN_INFO LITEPCIE_NAME " hdmi buffer: 0x%08x\n", next_buf);
+#endif 
 
         if (litepcie_readl(s, CSR_HDMI_IN0_DMA_SLOT0_STATUS_ADDR) == SLOT_PENDING){
             litepcie_writel(s, CSR_HDMI_IN0_DMA_SLOT0_ADDRESS_ADDR, next_buf);
@@ -754,7 +760,7 @@ static int queue_setup(struct vb2_queue *vq,
 	if (vq->num_buffers + *nbuffers < 3)
 		*nbuffers = 3 - vq->num_buffers;
 
-	printk("%d %d %d\n", *nplanes, vq->num_buffers, *nbuffers);
+	printk(KERN_INFO LITEPCIE_NAME " queue_setup: %d %d %d\n", *nplanes, vq->num_buffers, *nbuffers);
 
 	if (*nplanes)
 		return sizes[0] < chan->format.sizeimage ? -EINVAL : 0;
@@ -791,7 +797,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct hdmi2pcie_buffer *hbuf = to_hdmi2pcie_buffer(vbuf);
     struct litepcie_dma_desc *desc = kzalloc(sizeof(struct litepcie_dma_desc), GFP_KERNEL);
-    unsigned int next_buf;
+    unsigned int desc_empty;
 	unsigned long flags;
 
 #ifdef DEBUG_FNCTS
@@ -813,11 +819,13 @@ static void buffer_queue(struct vb2_buffer *vb)
     //Add DMA descriptor to list
     spin_lock_irqsave(&pcie_chan->desc_lock, flags);
 	if (chan->dir == HDMI2PCIE_DIR_IN) {
+        desc_empty = list_empty(&pcie_chan->wr_desc);
         list_add_tail(&desc->list, &pcie_chan->wr_desc);
         if(chan->streaming)
-            if(list_first_entry(&pcie_chan->wr_desc, struct litepcie_dma_desc, list) == desc)
+            if(desc_empty)
                 start_write(pcie_chan);
 	} else {
+        desc_empty = list_empty(&pcie_chan->rd_desc);
         list_add_tail(&desc->list, &pcie_chan->rd_desc);
 	}
     spin_unlock_irqrestore(&pcie_chan->desc_lock, flags);
@@ -883,7 +891,6 @@ static void stop_streaming(struct vb2_queue *vq)
 	printk(KERN_INFO LITEPCIE_NAME " %s\n", __func__);
 #endif
 
-	//litepcie_writel(litepcie_dev, CSR_DMA_READER_INITIATOR_ENABLE_ADDR, 0);
 	chan->streaming = 0;
 	litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.writer_interrupt);
 	litepcie_dma_writer_stop(litepcie_dev, PCIE_CHANNEL);
