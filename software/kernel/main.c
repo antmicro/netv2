@@ -454,6 +454,14 @@ static void litepcie_hdmi_rx_mmcm_write(struct litepcie_device *s, int adr, int 
 	while(!litepcie_readl(s, CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_ADDR));
 }
 
+static void litepcie_hdmi_tx_mmcm_write(struct litepcie_device *s, int adr, int data)
+{
+	litepcie_writel(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_ADR_ADDR, adr);
+	litepcie_writel(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_DAT_W_ADDR, data);
+	litepcie_writel(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_WRITE_ADDR, 1);
+	while(!litepcie_readl(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_DRDY_ADDR));
+}
+
 int hdmi_rx_mmcm_settings [3][5] = {
 	/* 30 to 60 MHz */
 	{0x1000 | (10<<6) | 10, 0x1000 | (10<<6) | 10, 0x1000 |  (8<<6) |  8, 0x1000 |  (2<<6) |  2, 0},
@@ -463,15 +471,35 @@ int hdmi_rx_mmcm_settings [3][5] = {
 	{0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 2, 0x1000 |  (0<<6) | 0, (1<<6)},
 };
 
+int hdmi_tx_mmcm_settings [3][5] = {
+	/* 30 to 60 MHz */
+	{0x1000 | (10<<6) | 10, 0x1000 | (10<<6) | 10, 0x1000 |  (8<<6) |  8, 0x1000 |  (2<<6) |  2, 0},
+	/* 60 to 120 MHz */
+	{0x1000 |  (5<<6) | 5, 0x1000 |  (5<<6) | 5, 0x1000 |  (4<<6) | 4, 0x1000 |  (1<<6) | 1, 0},
+	/* 120 to 240 MHz */
+	{0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 3, 0x1000 |  (2<<6) | 2, 0x1000 |  (0<<6) | 0, (1<<6)},
+};
+
 int hdmi_rx_mmcm_regs [5] = {0x14, 0x08, 0x0a, 0x0c, 0x0d};
+int hdmi_tx_mmcm_regs [5] = {0x14, 0x08, 0x0a, 0x0c, 0x0d};
 
 static void litepcie_hdmi_rx_mmcm_init(struct litepcie_device *s)
 {
 	int i;
 	/* 1280p60 settings */
 	for (i = 0; i < 5; i++) {
-		printk(KERN_ERR LITEPCIE_NAME " MMCM write 0x%x to 0x%x\n", hdmi_rx_mmcm_settings[1][i], hdmi_rx_mmcm_regs[i]);
+		printk(KERN_ERR LITEPCIE_NAME " MMCM rx write 0x%x to 0x%x\n", hdmi_rx_mmcm_settings[1][i], hdmi_rx_mmcm_regs[i]);
 		litepcie_hdmi_rx_mmcm_write(s, hdmi_rx_mmcm_regs[i], hdmi_rx_mmcm_settings[1][i]);
+	}
+}
+
+static void litepcie_hdmi_tx_mmcm_init(struct litepcie_device *s)
+{
+	int i;
+	/* 1280p60 settings */
+	for (i = 0; i < 5; i++) {
+		printk(KERN_ERR LITEPCIE_NAME " MMCM tx write 0x%x to 0x%x\n", hdmi_tx_mmcm_settings[1][i], hdmi_tx_mmcm_regs[i]);
+		litepcie_hdmi_tx_mmcm_write(s, hdmi_tx_mmcm_regs[i], hdmi_tx_mmcm_settings[1][i]);
 	}
 }
 
@@ -1475,6 +1503,30 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
 	litepcie_dev->rx.curr_read_buf = 0;
 	litepcie_dev->rx.next_read_buf = 1;
+
+	/* disable hdmi tx0 dma, set addr */
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_BASE_ADDR, 0x01000000);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_ENABLE_ADDR, 0);
+
+	/* mmcm settings */
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_RESET_ADDR, 1);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_RESET_ADDR, 0);
+	litepcie_hdmi_tx_mmcm_init(litepcie_dev);
+
+	/* timings 1280x720 @ 60.00 Hz 45 kHz px_clk 74.25 */
+	/* TODO: don't hardcore! */
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_HRES_ADDR, 1280);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_HSYNC_START_ADDR, 1280 + 220);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_HSYNC_END_ADDR, 1280 + 220 + 40);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_HSCAN_ADDR, 1280 + 370);
+
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_VRES_ADDR, 720);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_VSYNC_START_ADDR, 720 + 20);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_VSYNC_END_ADDR, 720 + 20 + 5);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_VSCAN_ADDR, 720 + 30);
+
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_LENGTH_ADDR, 1280 * 720 * 2);
+	litepcie_writel(litepcie_dev, CSR_HDMI_OUT0_CORE_INITIATOR_ENABLE_ADDR, 1);
 
 	/* check minimal gateware revision */
 	sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
