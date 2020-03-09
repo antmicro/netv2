@@ -233,7 +233,7 @@ class NeTV2(SoCSDRAM):
             self.comb += [
                self.pcie_dma1.source.ready.eq(self.dma_writer.sink.ready),
                self.dma_writer.sink.valid.eq(self.pcie_dma1.source.valid),
-               self.dma_writer.sink.data.eq(self.pcie_dma1.source.valid),
+               self.dma_writer.sink.data.eq(self.pcie_dma1.source.data),
             ]
 
             #pcie_dma1_counter = Signal(32)

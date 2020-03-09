@@ -768,6 +768,10 @@ static void buffer_queue(struct vb2_buffer *vb)
 		litepcie_writel(litepcie_dev, CSR_DMA_WRITER_LOOP_ADDR, 0);
 		litepcie_writel(litepcie_dev, CSR_DMA_WRITER_START_ADDR, 1);
 
+		/* TODO: make this nicer */
+		while (!litepcie_readl(litepcie_dev, CSR_DMA_WRITER_DONE_ADDR))
+			cpu_relax();
+
 		//litepcie_enable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
 		//litepcie_disable_interrupt(litepcie_dev, pcie_chan->dma.reader_interrupt);
 		litepcie_dma_reader_stop(litepcie_dev, 1);
