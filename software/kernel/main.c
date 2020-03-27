@@ -451,7 +451,8 @@ static void litepcie_hdmi_rx_mmcm_write(struct litepcie_device *s, int adr, int 
 	litepcie_writel(s, CSR_HDMI_IN0_CLOCKING_MMCM_ADR_ADDR, adr);
 	litepcie_writel(s, CSR_HDMI_IN0_CLOCKING_MMCM_DAT_W_ADDR, data);
 	litepcie_writel(s, CSR_HDMI_IN0_CLOCKING_MMCM_WRITE_ADDR, 1);
-	while(!litepcie_readl(s, CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_ADDR));
+	while(!litepcie_readl(s, CSR_HDMI_IN0_CLOCKING_MMCM_DRDY_ADDR))
+        cpu_relax();
 }
 
 static void litepcie_hdmi_tx_mmcm_write(struct litepcie_device *s, int adr, int data)
@@ -459,7 +460,8 @@ static void litepcie_hdmi_tx_mmcm_write(struct litepcie_device *s, int adr, int 
 	litepcie_writel(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_ADR_ADDR, adr);
 	litepcie_writel(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_DAT_W_ADDR, data);
 	litepcie_writel(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_WRITE_ADDR, 1);
-	while(!litepcie_readl(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_DRDY_ADDR));
+	while(!litepcie_readl(s, CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_DRDY_ADDR))
+        cpu_relax();
 }
 
 int hdmi_rx_mmcm_settings [3][5] = {
