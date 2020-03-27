@@ -1,6 +1,7 @@
 # Makefile for kernel module
 KERNEL_VERSION:=$(shell uname -r)
-KERNEL_PATH:=/lib/modules/$(KERNEL_VERSION)/build
+#KERNEL_PATH:=/lib/modules/$(KERNEL_VERSION)/build
+KERNEL_PATH:=/usr/src/linux-headers-$(KERNEL_VERSION)
 
 obj-m = litepcie.o
 litepcie-objs = main.o
