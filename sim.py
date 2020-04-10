@@ -15,6 +15,8 @@ from litex.soc.integration.builder import *
 from litex.soc.interconnect import wishbone
 from litex.soc.cores.uart import *
 
+from litevideo.output import VideoOut
+
 from litedram import modules as litedram_modules
 from litedram.phy.model import SDRAMPHYModel
 from litex.tools.litex_sim import sdram_module_nphases, get_sdram_phy_settings
@@ -107,6 +109,18 @@ class NeTV2(SoCSDRAM):
             self.add_constant("MEMTEST_ADDR_SIZE", 0)
             self.add_constant("MEMTEST_DATA_SIZE", 0)
 
+        # hdmi out
+        self.submodules.hdmi_out0 = VideoOut(
+            device      = "sim",
+            pads        = None,
+            dram_port   = self.sdram.crossbar.get_port(
+                mode         = "read",
+                data_width   = 16,
+                clock_domain = "sys",
+                reverse      = True),
+            mode        = "ycbcr422",
+            fifo_depth  = 512)
+        self.add_csr("hdmi_out0")
 
 # Build --------------------------------------------------------------------------------------------
 
