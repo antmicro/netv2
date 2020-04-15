@@ -63,8 +63,8 @@ class NeTV2(SoCSDRAM):
         # SoCSDRAM ----------------------------------------------------------------------------------
         SoCSDRAM.__init__(self, platform, sys_clk_freq,
             cpu_type                 = "vexriscv",
-            cpu_variant              ="lite",
-            l2_size                  = 128,
+            cpu_variant              = "lite",
+            l2_reverse               = False,
             csr_data_width           = 32,
             with_uart                = False,
             max_sdram_size           = 0x10000000, # Limit mapped SDRAM to 1GB.
@@ -81,8 +81,8 @@ class NeTV2(SoCSDRAM):
         # UART -------------------------------------------------------------------------------------
         self.submodules.uart_phy = RS232PHYModel(platform.request("serial"))
         self.submodules.uart = UART(self.uart_phy)
-        self.add_csr("uart", allow_user_defined=True)
-        self.add_interrupt("uart", allow_user_defined=True)
+        self.add_csr("uart")
+        self.add_interrupt("uart")
 
         # SDRAM ------------------------------------------------------------------------------------
         if with_sdram:

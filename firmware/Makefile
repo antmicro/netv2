@@ -1,7 +1,8 @@
-NETV2_DIR=../build
+NETV2_DIR=../build/sim
 
 include $(NETV2_DIR)/software/include/generated/variables.mak
-include $(SOC_DIRECTORY)/software/common.mak
+include /home/filip/work/netv2/litex/litex/soc/software/common.mak
+#include $(SOC_DIRECTORY)/software/common.mak
 
 UIPDIR=uip
 LIBUIPDIR=libuip
