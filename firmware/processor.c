@@ -626,6 +626,7 @@ void processor_start(int mode)
 	processor_v_active = m->v_active;
 	processor_refresh = calculate_refresh_rate(m);
 
+
 #ifdef CSR_HDMI_OUT0_BASE
 	hdmi_out0_core_initiator_enable_write(0);
 #endif
@@ -656,6 +657,7 @@ void processor_start(int mode)
 #ifndef SIMULATION
 	pattern_fill_framebuffer(m->h_active, m->v_active);
 #endif
+    wprintf("pattern done\n");
 
 #ifdef CSR_HDMI_OUT0_DRIVER_CLOCKING_PLL_RESET_ADDR
 	pll_config_for_clock(m->pixel_clock);

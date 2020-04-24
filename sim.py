@@ -58,6 +58,7 @@ class NeTV2(SoCSDRAM):
 
         main_ram_init = get_mem_data({
             "firmware/firmware.bin": "0x00000000",
+            "fb.bin":                "0x01000000",
             }, "little")
 
         # SoCSDRAM ----------------------------------------------------------------------------------
@@ -126,6 +127,7 @@ class NeTV2(SoCSDRAM):
 
 def main():
     parser = argparse.ArgumentParser(description="NeTV2 HDMI2PCIe simulation")
+    parser.add_argument("--run",                  action="store_true",     help="run simulation")
     parser.add_argument("--with-sdram",           action="store_true",     help="enable SDRAM support")
     parser.add_argument("--sdram-module",         default="MT48LC16M16",   help="Select SDRAM chip")
     parser.add_argument("--sdram-data-width",     default=32,              help="Set SDRAM chip data width")
@@ -152,7 +154,7 @@ def main():
         compile_gateware = True,
         csr_json         = os.path.join(build_dir, "csr.json"))
     builder.build(sim_config=sim_config,
-        run         = True,
+        run         = args.run,
         opt_level   = args.opt_level,
         trace       = args.trace,
         trace_start = int(args.trace_start),

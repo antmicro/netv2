@@ -177,76 +177,78 @@ void pattern_fill_framebuffer(int h_active, int w_active)
 	//flush_l2_cache();
 	color = -1;
 	volatile unsigned int *framebuffer = (unsigned int *)(MAIN_RAM_BASE + pattern_framebuffer_base());
-	if(pattern == PATTERN_COLOR_BARS) {
-		/* color bar pattern */
-		for(i=0; i<h_active*w_active*2/4; i++) {
-			if(i%(h_active/16) == 0)
-				color = inc_color(color);
-			if(color >= 0)
-				framebuffer[i] = color_bar[color];
-		}
-	} else {
-		/* vertical black white lines */
-		for(i=0; i<h_active*w_active*2/4; i++) {
-			if(i%(h_active/16) == 0)
-				color = inc_color(color);
-			if(color >= 0)
-				framebuffer[i] = 0x801080ff;
-		}
-	}
+    wprintf("am here\n");
+	//if(pattern == PATTERN_COLOR_BARS) {
+	//	/* color bar pattern */
+	//	for(i=0; i<h_active*w_active*2/4; i++) {
+    //        wprintf("%d/%d\n", i, h_active*w_active*2/4);
+	//		if(i%(h_active/16) == 0)
+	//			color = inc_color(color);
+	//		if(color >= 0)
+	//			framebuffer[i] = color_bar[color];
+	//	}
+	//} else {
+	//	/* vertical black white lines */
+	//	for(i=0; i<h_active*w_active*2/4; i++) {
+	//		if(i%(h_active/16) == 0)
+	//			color = inc_color(color);
+	//		if(color >= 0)
+	//			framebuffer[i] = 0x801080ff;
+	//	}
+	//}
 
 	// draw a border around that.
-	for (i=0; i<h_active*2; i++) {
-		framebuffer[i] = YCBCR422_WHITE;
-	}
+	//for (i=0; i<h_active*2; i++) {
+	//	framebuffer[i] = YCBCR422_WHITE;
+	//}
 
-	for (i=(w_active-4)*h_active*2/4; i<h_active*w_active*2/4; i++) {
-		framebuffer[i] = YCBCR422_WHITE;
-	}
+	//for (i=(w_active-4)*h_active*2/4; i<h_active*w_active*2/4; i++) {
+	//	framebuffer[i] = YCBCR422_WHITE;
+	//}
 
-	for (i=0; i<w_active*2; i++) {
-		// do the left bar
-		for (j=0; j<2; j++) {
-			framebuffer[(i*h_active)+j] = YCBCR422_WHITE;
-			framebuffer[(i*h_active)+j + (1*h_active/2)] = YCBCR422_WHITE;
-		}
+	//for (i=0; i<w_active*2; i++) {
+	//	// do the left bar
+	//	for (j=0; j<2; j++) {
+	//		framebuffer[(i*h_active)+j] = YCBCR422_WHITE;
+	//		framebuffer[(i*h_active)+j + (1*h_active/2)] = YCBCR422_WHITE;
+	//	}
 
-		// do the right bar
-		for (j=h_active-2; j<h_active; j++) {
-			framebuffer[(i*h_active)+j] = YCBCR422_WHITE;
-			framebuffer[(i*h_active)+j + (1*h_active/2)] = YCBCR422_WHITE;
-		}
-	}
+	//	// do the right bar
+	//	for (j=h_active-2; j<h_active; j++) {
+	//		framebuffer[(i*h_active)+j] = YCBCR422_WHITE;
+	//		framebuffer[(i*h_active)+j + (1*h_active/2)] = YCBCR422_WHITE;
+	//	}
+	//}
 
-	// Line 1 - uptime + version information
-	int line = 1;
-	pattern_draw_text(19, line, (char*)git_describe);
-	line++;
-	// Line 2 - build time data
-	pattern_draw_text(1, line, "Built: "__DATE__" "__TIME__);
-	line++;
-	// Line 3- running on
-	pattern_draw_text(1, line, "Running on ");
-	pattern_draw_text(12, line, (char*)board);
-	line++;
+	//// Line 1 - uptime + version information
+	//int line = 1;
+	//pattern_draw_text(19, line, (char*)git_describe);
+	//line++;
+	//// Line 2 - build time data
+	//pattern_draw_text(1, line, "Built: "__DATE__" "__TIME__);
+	//line++;
+	//// Line 3- running on
+	//pattern_draw_text(1, line, "Running on ");
+	//pattern_draw_text(12, line, (char*)board);
+	//line++;
 
-	// Line 4 - empty
-	line++;
+	//// Line 4 - empty
+	//line++;
 
 #ifndef HIDE_ADVERT
 	// Line 5 - Hi!
-	pattern_draw_text(1, line, "Hi! I am HDMI2USB ");
-	line++;
-	// Line 6+7 - Want...
-	pattern_draw_text_color(1, line, "Want to hack on FOSS video capture systems?", YCBCR422_BLUE, YCBCR422_WHITE);
-	line++;
-	pattern_draw_text_color(1, line, "Get in touch with us! #timvideos on Freenode IRC", YCBCR422_RED, YCBCR422_WHITE);
-	line++;
-	// Line 8 - URLs..
-	pattern_draw_text(1, line, "code.timvideos.us / enjoy-digital.fr");
-	pattern_draw_text_color(6, line, "tim", YCBCR422_WHITE, YCBCR422_RED);
-	pattern_draw_text_color(9, line, "videos", YCBCR422_WHITE, YCBCR422_BLUE);
-	pattern_draw_text_color(27, line, "digital", YCBCR422_WHITE, YCBCR422_CYAN);
+	//pattern_draw_text(1, line, "Hi! I am HDMI2USB ");
+	//line++;
+	//// Line 6+7 - Want...
+	//pattern_draw_text_color(1, line, "Want to hack on FOSS video capture systems?", YCBCR422_BLUE, YCBCR422_WHITE);
+	//line++;
+	//pattern_draw_text_color(1, line, "Get in touch with us! #timvideos on Freenode IRC", YCBCR422_RED, YCBCR422_WHITE);
+	//line++;
+	//// Line 8 - URLs..
+	//pattern_draw_text(1, line, "code.timvideos.us / enjoy-digital.fr");
+	//pattern_draw_text_color(6, line, "tim", YCBCR422_WHITE, YCBCR422_RED);
+	//pattern_draw_text_color(9, line, "videos", YCBCR422_WHITE, YCBCR422_BLUE);
+	//pattern_draw_text_color(27, line, "digital", YCBCR422_WHITE, YCBCR422_CYAN);
 #endif
 
 	//flush_l2_cache();
@@ -260,10 +262,10 @@ void pattern_service(void)
 	static int last_event;
 	static char buffer[16];
 
-	if(elapsed(&last_event, CONFIG_CLOCK_FREQUENCY)) {
-		sprintf(buffer, "Uptime: %s", uptime_str());
-		pattern_draw_text(1, 1, buffer);
-	}
+	//if(elapsed(&last_event, CONFIG_CLOCK_FREQUENCY)) {
+	//	sprintf(buffer, "Uptime: %s", uptime_str());
+	//	pattern_draw_text(1, 1, buffer);
+	//}
 	//flush_l2_cache();
 /* FIXME: Framebuffer Should not even be compiled if no MAIN RAM */
 #endif
