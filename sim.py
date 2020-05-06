@@ -136,6 +136,7 @@ def main():
     parser.add_argument("--trace-start",          default=0,               help="cycle to start VCD tracing")
     parser.add_argument("--trace-end",            default=-1,              help="cycle to end VCD tracing")
     parser.add_argument("--opt-level",            default="O3",            help="compilation optimization level")
+    parser.add_argument("--sim-end",              default=-1,              help="cycle to end simulation")
     args = parser.parse_args()
 
     sim_config = SimConfig(default_clk="sys_clk")
@@ -158,7 +159,8 @@ def main():
         opt_level   = args.opt_level,
         trace       = args.trace,
         trace_start = int(args.trace_start),
-        trace_end   = int(args.trace_end))
+        trace_end   = int(args.trace_end),
+        sim_end     = int(args.sim_end))
 
 
 if __name__ == "__main__":
