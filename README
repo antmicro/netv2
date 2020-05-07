@@ -7,33 +7,88 @@
 
 [> Getting started
 ------------------
-1. Install Python3 and your vendor's software
 
-2. Obtain LiteX & Cores ecosystem:
-  Get litex_setup.py from:
-  https://github.com/enjoy-digital/litex/
-  python3 litex_setup.py init install
-
-3. Build the design and load it:
-  ./netv2.py --build --load
-
-[> HowTo use Linux V4L2 driver
 Existing makefile targets assume that you have a separate testing Linux PC that has NeTV2 board plugged in and that it can be reached via SSH from your development PC.
 
 Currently only HDMI source that was succesfully captured is Numato Opsis HDMI output but by using Opsis as a HDMI repeater other sources can be captured (1280x720p60 output from a PC works fine).
 Additionally only RX0 HDMI input is supported by the current design.
 
-0. For correct operation of the HDMI input you must use code from this branch https://github.com/antmicro/litevideo/tree/iserdese-clocking (it seems that mainline code generates designs with ISEREDESE2 CLKB inputs driven from logic).
-1. Build design via gateware/build target
-2. Load the bitstream onto the board (for best results stop the PC in the bootloader, load the bitstream, and continue booting).
-3. Linux should show it in lspci output as:
-  Memory controller: Xilinx Corporation Device 7021
-4. Set IP_ADDR and LOGIN enviromental variables to match your testing machine (for best results setup SSH so you don't have to provide password every time you connect - setup SSH keys etc.).
-5. After that you can build, reload driver, and start gstreamer using the following commands (for host/reload target to work correctly you must have the litepcie kernel module loaded and ssh $(HOST) "echo 1 | sudo tee /sys/bus/pci/devices/.../remove" command from the makefile must point to the correct PCIe device):
-  make module/build
-  make host/reload
-  make host/gst
-6. If stream started by make host/gst hangs then you can remotely kill gstreamer using make host/stop and then restart host/gst target.
+Building bitstream:
+
+1. Install Litex:
+    wget https://raw.githubusercontent.com/enjoy-digital/litex/master/litex_setup.py
+    chmod +x litex_setup.py
+    ./litex_setup.py init install --user
+
+2. Enter litevideo directory and checkout to this branch https://github.com/antmicro/litevideo/tree/iserdese-clocking
+    cd litevideo
+    git remote add antmicro https://github.com/antmicro/litevideo
+    git fetch antmicro
+    git checkout antmicro/iserdese-clocking
+
+3. Source Vivado configuration (if not already sourced):
+    source /opt/Xilinx/Vivado/2018.3/settings64.sh
+
+4. Go back to netv2 directory and build the bitstream:
+    cd ..
+    make gateware/target
+
+5. Bitstream should be located in:
+    build/gateware/top.bit
+
+Loading bitstream:
+
+1. Connect to NeTV2 board using JTAG (ARM-USB-TINY-H JTAG adapter was used)
+2. Plug NeTV2 board into test PC
+3. Turn on test PC
+4. Stop test PC in bootloader
+5. Load bitstream:
+    make gateware/load
+
+6. Continue booting the test PC
+7. lspci in linux should show:
+    Memory controller: Xilinx Corporation Device 7021
+
+Building and loading kernel module:
+
+1. Setup enviroment:
+    export IP_ADDR "<test PC IP address>"
+    export LOGIN "<test PC ssh username>"
+
+2. Build kernel module on the test PC:
+    make module/build
+
+3. Kernel module should be located in:
+    /lib/modules/\`uname -r\`/litepcie.ko
+
+4. Update list of module dependencies:
+    depmod -A
+
+5. Load kernel module:
+    modprobe litepcie
+
+6. Check if module was loaded:
+    lsmod | grep litepcie
+
+Reloading kernel module:
+
+1. Setup enviroment
+
+2. Adjust the following line in makefile to point to the correct PCIe device (this needs to be adjusted for each test PC used):
+    echo 1 | sudo tee /sys/bus/pci/devices/0000\:02\:00.0/remove
+
+3. Reload kernel module:
+    make host/reload
+
+Gstreamer:
+
+1. Setup enviroment
+
+2. Start gstreamer with:
+    make host/gst
+
+3. Stop gstreamer with:
+    make host/stop
 
 [> Status
 ---------
