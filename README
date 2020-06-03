@@ -11,13 +11,14 @@
 Existing makefile targets assume that you have a separate testing Linux PC that has NeTV2 board plugged in and that it can be reached via SSH from your development PC.
 
 Currently only HDMI source that was succesfully captured is Numato Opsis HDMI output but by using Opsis as a HDMI repeater other sources can be captured (1280x720p60 output from a PC works fine).
-Additionally only RX0 HDMI input is supported by the current design.
+Additionally only RX0 HDMI input is supported by the current design. TX0 HDMI output is also supported by the design.
 
 Building bitstream:
 
 1. Install Litex:
     wget https://raw.githubusercontent.com/enjoy-digital/litex/master/litex_setup.py
     chmod +x litex_setup.py
+    # use litevideo from https://github.com/antmicro/litevideo/ (branch `hdmi2pcie-colors`)
     ./litex_setup.py init install --user
 
 2. Enter litevideo directory and checkout to this branch https://github.com/antmicro/litevideo/tree/iserdese-clocking
@@ -85,7 +86,8 @@ Gstreamer:
 1. Setup enviroment
 
 2. Start gstreamer with:
-    make host/gst
+    make host/gst # for HDMI input
+    make host/out # for HDMI output (gstreamer's videotestsrc)
 
 3. Stop gstreamer with:
     make host/stop
