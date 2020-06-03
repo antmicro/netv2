@@ -380,6 +380,7 @@ static const struct video_timing video_modes[PROCESSOR_MODE_COUNT] = {
 
 void processor_list_modes(char *mode_descriptors)
 {
+    wprintf("%s\n", __func__);
 	int i;
 	for(i=0;i<PROCESSOR_MODE_COUNT;i++) {
 		processor_describe_mode(&mode_descriptors[PROCESSOR_MODE_DESCLEN*i], i);
@@ -388,6 +389,7 @@ void processor_list_modes(char *mode_descriptors)
 
 void processor_describe_mode(char *mode_descriptor, int mode)
 {
+    wprintf("%s\n", __func__);
 	if (mode >= PROCESSOR_MODE_COUNT) return;
 	unsigned refresh_rate = calculate_refresh_rate(&(video_modes[mode]));
 	sprintf(mode_descriptor,
@@ -403,6 +405,7 @@ void processor_describe_mode(char *mode_descriptor, int mode)
 // Spartan-6 PLL clocking
 static void fb_clkgen_write(int cmd, int data)
 {
+    wprintf("%s\n", __func__);
 	int word;
 	word = (data << 2) | cmd;
 	hdmi_out0_driver_clocking_cmd_data_write(word);
@@ -413,6 +416,7 @@ static void fb_clkgen_write(int cmd, int data)
 // Artix-7 MMCM clocking
 static void fb_clkgen_write(int m, int d)
 {
+    wprintf("%s\n", __func__);
 	/* MMCM VCO range for slowest speed grade Artix-7 is 600MHz-1200MHz
 	   Warn if the VCO strays outside these limits.
 	*/
@@ -448,6 +452,7 @@ static void fb_clkgen_write(int m, int d)
 // Unsupported clocking!@?
 static void fb_clkgen_write(int m, int d)
 {
+    wprintf("%s\n", __func__);
 	assert(false);
 }
 #endif
@@ -455,6 +460,7 @@ static void fb_clkgen_write(int m, int d)
 // Work out the multiplier and divider values for a given pixel clock.
 static void fb_get_clock_md(unsigned int pixel_clock, unsigned int *best_m, unsigned int *best_d)
 {
+    wprintf("%s\n", __func__);
 	unsigned int max_m, max_d;
 	unsigned int ideal_m, ideal_d;
 	unsigned int bm, bd;
@@ -510,28 +516,21 @@ static void fb_get_clock_md(unsigned int pixel_clock, unsigned int *best_m, unsi
 
 static void fb_set_clock(unsigned int pixel_clock)
 {
+    wprintf("%s\n", __func__);
 	unsigned int clock_m, clock_d;
 
 	fb_get_clock_md(pixel_clock, &clock_m, &clock_d);
 
-#ifdef CSR_HDMI_OUT0_DRIVER_CLOCKING_PLL_RESET_ADDR
-	fb_clkgen_write(0x1, clock_d-1);
-	fb_clkgen_write(0x3, clock_m-1);
-	hdmi_out0_driver_clocking_send_go_write(1);
-	while(!(hdmi_out0_driver_clocking_status_read() & CLKGEN_STATUS_PROGDONE));
-	while(!(hdmi_out0_driver_clocking_status_read() & CLKGEN_STATUS_LOCKED));
-#elif CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_RESET_ADDR
 	fb_clkgen_write(clock_m, clock_d);
-#endif
 }
 
 
 static void fb_set_mode(const struct video_timing *mode)
 {
+    wprintf("%s\n", __func__);
 	unsigned int hdmi_out0_enabled;
 	unsigned int hdmi_out1_enabled;
 
-#ifdef CSR_HDMI_OUT0_BASE
 	if (hdmi_out0_core_initiator_enable_read()) {
 		hdmi_out0_enabled = 1;
 		hdmi_out0_core_initiator_enable_write(0);
@@ -548,32 +547,13 @@ static void fb_set_mode(const struct video_timing *mode)
 	hdmi_out0_core_initiator_length_write(mode->h_active*mode->v_active*2);
 
 	hdmi_out0_core_initiator_enable_write(hdmi_out0_enabled);
-#endif
-
-#ifdef CSR_HDMI_OUT1_BASE
-	if (hdmi_out1_core_initiator_enable_read()) {
-		hdmi_out1_enabled = 1;
-		hdmi_out1_core_initiator_enable_write(0);
-	}
-	hdmi_out1_core_initiator_hres_write(mode->h_active);
-	hdmi_out1_core_initiator_hsync_start_write(mode->h_active + mode->h_sync_offset);
-	hdmi_out1_core_initiator_hsync_end_write(mode->h_active + mode->h_sync_offset + mode->h_sync_width);
-	hdmi_out1_core_initiator_hscan_write(mode->h_active + mode->h_blanking);
-	hdmi_out1_core_initiator_vres_write(mode->v_active);
-	hdmi_out1_core_initiator_vsync_start_write(mode->v_active + mode->v_sync_offset);
-	hdmi_out1_core_initiator_vsync_end_write(mode->v_active + mode->v_sync_offset + mode->v_sync_width);
-	hdmi_out1_core_initiator_vscan_write(mode->v_active + mode->v_blanking);
-
-	hdmi_out1_core_initiator_length_write(mode->h_active*mode->v_active*2);
-
-	hdmi_out1_core_initiator_enable_write(hdmi_out1_enabled);
-#endif
 
 	fb_set_clock(mode->pixel_clock);
 }
 
 static void edid_set_mode(const struct video_timing *mode, const struct video_timing *sec_mode)
 {
+    wprintf("%s\n", __func__);
 #if defined(CSR_HDMI_IN0_BASE) || defined(CSR_HDMI_IN1_BASE)
 	unsigned char edid[128];
 	int i;
@@ -595,19 +575,17 @@ int processor_secondary_mode = EDID_SECONDARY_MODE_OFF;
 
 void processor_init(int sec_mode)
 {
+    wprintf("%s\n", __func__);
 	processor_hdmi_out0_source = VIDEO_IN_HDMI_IN0;
 	processor_hdmi_out1_source = VIDEO_IN_HDMI_IN0;
 	processor_encoder_source = VIDEO_IN_HDMI_IN0;
-#ifdef ENCODER_BASE
-		encoder_enable(0);
-		encoder_target_fps = 30;
-#endif
 	pattern = PATTERN_COLOR_BARS;
 	processor_secondary_mode = sec_mode;
 }
 
 void processor_start(int mode)
 {
+    wprintf("%s\n", __func__);
 	const struct video_timing *m;
 	const struct video_timing *sec_mode = NULL;
 	if (processor_secondary_mode != EDID_SECONDARY_MODE_OFF &&
@@ -620,91 +598,54 @@ void processor_start(int mode)
 		m = &video_modes[mode];
 	}
 
-	processor_mode = mode;
+	//processor_mode = mode;
+    processor_mode = 9;
+    m = &video_modes[9];
 
 	processor_h_active = m->h_active;
 	processor_v_active = m->v_active;
 	processor_refresh = calculate_refresh_rate(m);
 
-#ifdef CSR_HDMI_OUT0_BASE
-	hdmi_out0_core_initiator_enable_write(0);
-#endif
-#ifdef CSR_HDMI_OUT1_BASE
-	hdmi_out1_core_initiator_enable_write(0);
-#endif
-#ifdef CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_RESET_ADDR
-	hdmi_out0_driver_clocking_mmcm_reset_write(1);
-#endif
-#ifdef CSR_HDMI_OUT0_DRIVER_CLOCKING_PLL_RESET_ADDR
-	hdmi_out0_driver_clocking_pll_reset_write(1);
-#endif
-#ifdef CSR_HDMI_IN0_BASE
-	hdmi_in0_edid_hpd_en_write(0);
-#endif
-#ifdef CSR_HDMI_IN1_BASE
-	hdmi_in1_edid_hpd_en_write(0);
-#endif
 
-#ifdef CSR_HDMI_IN0_BASE
+	hdmi_out0_core_initiator_enable_write(0);
+	hdmi_out0_driver_clocking_mmcm_reset_write(1);
+	hdmi_in0_edid_hpd_en_write(0);
+
 	hdmi_in0_disable();
 	hdmi_in0_clear_framebuffers();
-#endif
-#ifdef CSR_HDMI_IN1_BASE
-	hdmi_in1_disable();
-	hdmi_in1_clear_framebuffers();
-#endif
 #ifndef SIMULATION
 	pattern_fill_framebuffer(m->h_active, m->v_active);
 #endif
 
-#ifdef CSR_HDMI_OUT0_DRIVER_CLOCKING_PLL_RESET_ADDR
-	pll_config_for_clock(m->pixel_clock);
-#elif CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_RESET_ADDR
 	mmcm_config_for_clock(&hdmi_out0_driver_clocking_mmcm, m->pixel_clock);
-#endif
 
 	fb_set_mode(m);
 	edid_set_mode(m, sec_mode);
 
-#ifdef CSR_HDMI_IN0_BASE
 	hdmi_in0_init_video(m->h_active, m->v_active);
-#endif
-#ifdef CSR_HDMI_IN1_BASE
-	hdmi_in1_init_video(m->h_active, m->v_active);
-#endif
 
-#ifdef CSR_HDMI_OUT0_DRIVER_CLOCKING_PLL_RESET_ADDR
-	hdmi_out0_driver_clocking_pll_reset_write(0);
-#elif CSR_HDMI_OUT0_DRIVER_CLOCKING_MMCM_RESET_ADDR
 	hdmi_out0_driver_clocking_mmcm_reset_write(0);
-#endif
-#ifdef CSR_HDMI_OUT0_BASE
 	hdmi_out0_core_initiator_enable_write(1);
-#endif
-#ifdef CSR_HDMI_OUT1_BASE
-	hdmi_out1_core_initiator_enable_write(1);
-#endif
-#ifdef CSR_HDMI_IN0_BASE
 	hdmi_in0_edid_hpd_en_write(1);
-#endif
-#ifdef CSR_HDMI_IN1_BASE
-	hdmi_in1_edid_hpd_en_write(1);
-#endif
 }
 
 void processor_set_hdmi_out0_source(int source) {
+    wprintf("%s\n", __func__);
 	processor_hdmi_out0_source = source;
 }
 
 void processor_set_hdmi_out1_source(int source) {
+    wprintf("%s\n", __func__);
 	processor_hdmi_out1_source = source;
 }
 
 void processor_set_encoder_source(int source) {
+    wprintf("%s\n", __func__);
 	processor_encoder_source = source;
 }
 
 char * processor_get_source_name(int source) {
+    wprintf("%s\n", __func__);
 	memset(processor_buffer, 0, 16);
 	if(source == VIDEO_IN_PATTERN)
 		sprintf(processor_buffer, "pattern");
@@ -717,6 +658,7 @@ char * processor_get_source_name(int source) {
 
 void processor_update(void)
 {
+    //wprintf("%s\n", __func__);
 #ifdef CSR_PCIE_PHY_BASE
 	unsigned int pcie_in_fb_idx = (*pcie_in_fb_index) >> 24;
 #endif
@@ -790,6 +732,7 @@ void processor_update(void)
 
 void processor_service(void)
 {
+    //wprintf("%s\n", __func__);
 	const struct video_timing *m = &video_modes[processor_mode];
 #ifdef CSR_HDMI_IN0_BASE
 	hdmi_in0_service(m->pixel_clock);
@@ -806,16 +749,19 @@ void processor_service(void)
 
 struct video_timing* processor_get_custom_mode(void)
 {
+    wprintf("%s\n", __func__);
 	return &custom_modes[0];
 }
 
 void processor_set_custom_mode(void)
 {
+    wprintf("%s\n", __func__);
 	processor_start(PROCESSOR_MODE_CUSTOM);
 }
 
 void processor_set_secondary_mode(int mode)
 {
+    wprintf("%s\n", __func__);
 	processor_secondary_mode = mode;
 	// Start the processor again to set the new EDID,
 	// and force the computer to rescan the EDID.

@@ -100,4 +100,5 @@ void print_version(void) {
 	wprintf("         built: "__DATE__" "__TIME__"\n");
 	wprintf("        uptime: %s\n", uptime_str());
 	wprintf("-----------------------------------------------\n");
+
 }

@@ -13,6 +13,7 @@
 #include "version_data.h"
 
 unsigned int pattern_framebuffer_base(void) {
+    //wprintf("%s\n", __func__);
 	return FRAMEBUFFER_BASE_PATTERN;
 }
 
@@ -131,11 +132,13 @@ static const unsigned char font5x7[] = {
 #endif
 
 static int inc_color(int color) {
+    //wprintf("%s\n", __func__);
 	color++;
 	return color%8;
 }
 
 static void pattern_draw_text_color(int x, int y, char *ptr, long background_color, long text_color) {
+    //wprintf("%s\n", __func__);
 #ifdef MAIN_RAM_BASE
 	int i, j, k;
 	int adr;
@@ -159,10 +162,12 @@ static void pattern_draw_text_color(int x, int y, char *ptr, long background_col
 }
 
 static void pattern_draw_text(int x, int y, char *ptr) {
+    //wprintf("%s\n", __func__);
 	pattern_draw_text_color(x, y, ptr, YCBCR422_WHITE, YCBCR422_BLACK);
 }
 
 void pattern_next(void) {
+    wprintf("%s\n", __func__);
 	pattern++;
 	pattern = pattern % PATTERN_MAX;
 	pattern_fill_framebuffer(processor_h_active, processor_v_active);
@@ -171,15 +176,17 @@ void pattern_next(void) {
 
 void pattern_fill_framebuffer(int h_active, int w_active)
 {
+    wprintf("%s\n", __func__);
 #ifdef MAIN_RAM_BASE
 	int i, j;
 	int color;
-	flush_l2_cache();
+	//flush_l2_cache();
 	color = -1;
 	volatile unsigned int *framebuffer = (unsigned int *)(MAIN_RAM_BASE + pattern_framebuffer_base());
 	if(pattern == PATTERN_COLOR_BARS) {
 		/* color bar pattern */
 		for(i=0; i<h_active*w_active*2/4; i++) {
+            //wprintf("%d/%d\n", i, h_active*w_active*2/4);
 			if(i%(h_active/16) == 0)
 				color = inc_color(color);
 			if(color >= 0)
@@ -256,6 +263,7 @@ void pattern_fill_framebuffer(int h_active, int w_active)
 
 void pattern_service(void)
 {
+    //wprintf("%s\n", __func__);
 #ifdef MAIN_RAM_BASE
 	static int last_event;
 	static char buffer[16];

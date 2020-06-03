@@ -95,8 +95,8 @@ int main(void)
 		ip_addr[i] = config_get(CONFIG_KEY_NETWORK_IP0+i);
 	}
 	// Setup the Ethernet
-	ethernet_init(mac_addr, ip_addr);
-	etherbone_init();
+	//ethernet_init(mac_addr, ip_addr);
+	//etherbone_init();
 	//telnet_init();
 #endif
 
