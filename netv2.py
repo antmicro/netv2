@@ -328,7 +328,7 @@ def main():
         prog.flash(0, "build/gateware/top.bin")
         exit()
 
-    platform = netv2.Platform(device="xc7a100t")
+    platform = netv2.Platform(device="xc7a35t")
     soc      = NeTV2(platform)
     builder  = Builder(soc, output_dir="build", csr_csv="test/csr.csv")
     builder.build(run=args.build)
