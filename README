@@ -15,20 +15,16 @@ Additionally only RX0 HDMI input is supported by the current design. TX0 HDMI ou
 
 Building bitstream:
 
-1. Install Litex:
-    wget https://raw.githubusercontent.com/enjoy-digital/litex/master/litex_setup.py
-    chmod +x litex_setup.py
-    # use litevideo from https://github.com/antmicro/litevideo/ (branch `hdmi2pcie-colors`)
-    ./litex_setup.py init install --user
-
-2. Enter litevideo directory and checkout to this branch https://github.com/antmicro/litevideo/tree/iserdese-clocking
-    cd litevideo
-    git remote add antmicro https://github.com/antmicro/litevideo
-    git fetch antmicro
-    git checkout antmicro/iserdese-clocking
+1. Install Litex dependencies:
+    cd litex
+    python3 setup.py develop
+    cd ../litedram
+    python3 setup.py develop
+    cd ../litevideo
+    python3 setup.py develop
 
 3. Source Vivado configuration (if not already sourced):
-    source /opt/Xilinx/Vivado/2018.3/settings64.sh
+    source /opt/Xilinx/Vivado/2019.2/settings64.sh
 
 4. Go back to netv2 directory and build the bitstream:
     cd ..
@@ -86,8 +82,8 @@ Gstreamer:
 1. Setup enviroment
 
 2. Start gstreamer with:
-    make host/gst # for HDMI input
     make host/out # for HDMI output (gstreamer's videotestsrc)
+    make host/gst # for HDMI input
 
 3. Stop gstreamer with:
     make host/stop
