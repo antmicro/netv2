@@ -1,0 +1,10 @@
+[submodule "litevideo"]
+	path = litevideo
+	url = https://github.com/antmicro/litevideo
+	branch = hdmi2pcie-colors
+[submodule "litex"]
+	path = litex
+	url = https://github.com/enjoy-digital/litex
+[submodule "litedram"]
+	path = litedram
+	url = https://github.com/enjoy-digital/litedram
