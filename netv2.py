@@ -305,9 +305,10 @@ def main():
     with open("README") as f:
         description = [str(f.readline()) for i in range(7)]
     parser = argparse.ArgumentParser(description="".join(description[0:]), formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--build", action="store_true", help="Build bitstream")
-    parser.add_argument("--load",  action="store_true", help="Load bitstream")
-    parser.add_argument("--flash", action="store_true", help="Flash bitstream")
+    parser.add_argument("--build",  action="store_true", help="Build bitstream")
+    parser.add_argument("--load",   action="store_true", help="Load bitstream")
+    parser.add_argument("--flash",  action="store_true", help="Flash bitstream")
+    parser.add_argument("--device", default="xc7a35t", choices=["xc7a35t", "xc7a100t"], help="Select FPGA chip")
     args = parser.parse_args()
 
     if args.load:
@@ -323,7 +324,7 @@ def main():
         prog.flash(0, "build/gateware/top.bin")
         exit()
 
-    platform = netv2.Platform(device="xc7a35t")
+    platform = netv2.Platform(device=args.device)
     soc      = NeTV2(platform)
     builder  = Builder(soc, output_dir="build", csr_csv="test/csr.csv")
     builder.build(run=args.build)
