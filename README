@@ -10,6 +10,9 @@
 
 Existing makefile targets assume that you have a separate testing Linux PC that has NeTV2 board plugged in and that it can be reached via SSH from your development PC.
 
+It is assumed that you're using NeTV2 board with xc7a35t. If you're using the variant with xc7a100t, set PART variable:
+    export PART=xc7a100t
+
 Currently only HDMI source that was succesfully captured is Numato Opsis HDMI output but by using Opsis as a HDMI repeater other sources can be captured (1280x720p60 output from a PC works fine).
 Additionally only RX0 HDMI input is supported by the current design. TX0 HDMI output is also supported by the design.
 

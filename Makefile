@@ -5,6 +5,7 @@ SERIAL_PORT ?= /dev/ttyUSB1
 VIDEO_IN ?= /dev/video0
 VIDEO_OUT ?= /dev/video1
 VIRTUALENV_DIR ?= venv
+PART ?= xc7a35t
 
 LITEX_MODULES = migen litex litedram litevideo litepcie
 
@@ -42,7 +43,7 @@ venv/clean:
 
 ### GATEWARE ###
 build/gateware/top.bit: netv2.py
-	./netv2.py --build
+	./netv2.py --build --device=$(PART)
 
 gateware/build: build/gateware/top.bit
 
