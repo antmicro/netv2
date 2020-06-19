@@ -4,6 +4,9 @@ HOST := $(LOGIN)@$(IP_ADDR)
 SERIAL_PORT ?= /dev/ttyUSB1
 VIDEO_IN ?= /dev/video0
 VIDEO_OUT ?= /dev/video1
+VIRTUALENV_DIR ?= venv
+
+LITEX_MODULES = migen litex litedram litevideo litepcie
 
 default: all
 
@@ -18,6 +21,23 @@ target: firmware/load
 
 clean: firmware/clean gateware/clean module/clean
 	rm -rf data data.yuv
+
+
+### VIRTUALENV ###
+venv/create:
+	if [ ! -d venv ]; then \
+		virtualenv $(VIRTUALENV_DIR); \
+	fi
+
+venv/install:
+	for module in $(LITEX_MODULES); do \
+		cd $$module; \
+		python setup.py develop; \
+		cd ..; \
+	done
+
+venv/clean:
+	rm -rf $(VIRTUALENV_DIR)
 
 
 ### GATEWARE ###
