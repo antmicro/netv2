@@ -15,22 +15,18 @@ Additionally only RX0 HDMI input is supported by the current design. TX0 HDMI ou
 
 Building bitstream:
 
-1. Install Litex dependencies:
-    cd litex
-    python3 setup.py develop
-    cd ../litedram
-    python3 setup.py develop
-    cd ../litevideo
-    python3 setup.py develop
+1. Prepare virtualenv:
+    make venv/create
+    source venv/bin/activate
+    make venv/install
 
-3. Source Vivado configuration (if not already sourced):
+2. Source Vivado configuration (if not already sourced):
     source /opt/Xilinx/Vivado/2019.2/settings64.sh
 
-4. Go back to netv2 directory and build the bitstream:
-    cd ..
-    make gateware/target
+3. Build the bitstream:
+    make gateware/build
 
-5. Bitstream should be located in:
+4. Bitstream should be located in:
     build/gateware/top.bit
 
 Loading bitstream:
