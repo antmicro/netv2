@@ -27,11 +27,6 @@ from litedram.modules import K4B2G1646F
 from litedram.phy import s7ddrphy
 from litedram.frontend.dma import LiteDRAMDMAReader, LiteDRAMDMAWriter
 
-from liteeth.phy.rmii import LiteEthPHYRMII
-from liteeth.core.mac import LiteEthMAC
-from liteeth.core import LiteEthUDPIPCore
-from liteeth.frontend.etherbone import LiteEthEtherbone
-
 from litepcie.phy.s7pciephy import S7PCIEPHY
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMA

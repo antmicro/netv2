@@ -8,3 +8,9 @@
 [submodule "litedram"]
 	path = litedram
 	url = https://github.com/enjoy-digital/litedram
+[submodule "litepcie"]
+	path = litepcie
+	url = https://github.com/enjoy-digital/litepcie
+[submodule "migen"]
+	path = migen
+	url = https://github.com/m-labs/migen
