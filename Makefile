@@ -27,7 +27,7 @@ clean: firmware/clean gateware/clean module/clean
 ### VIRTUALENV ###
 venv/create:
 	if [ ! -d venv ]; then \
-		virtualenv $(VIRTUALENV_DIR); \
+		virtualenv --python=python3 $(VIRTUALENV_DIR); \
 	fi
 
 venv/install:
